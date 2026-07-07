@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Extrator Custom de PDFs — IA</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --border:#2a2e38; --text:#e8eaf0;
+    --muted:#9aa1ae; --accent:#6ea8fe; --accent2:#8b5cf6; --ok:#22c55e; --err:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+  header{padding:28px 32px;border-bottom:1px solid var(--border)}
+  header h1{margin:0;font-size:22px}
+  header p{margin:6px 0 0;color:var(--muted);font-size:14px}
+  .wrap{max-width:960px;margin:0 auto;padding:32px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:24px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
+  textarea, input[type=file]{
+    width:100%;background:#0d0f14;border:1px solid var(--border);border-radius:10px;
+    color:var(--text);padding:12px;font-size:14px;font-family:inherit
+  }
+  textarea{min-height:110px;resize:vertical}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .row > div{flex:1;min-width:240px}
+  button{
+    background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;
+    padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px
+  }
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+  .status{margin-top:14px;font-size:14px}
+  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
+  .item{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;background:#0d0f14}
+  .item h4{margin:0 0 6px;font-size:15px}
+  .item .ref{color:var(--muted);font-size:12px;margin-bottom:8px}
+  .item table{width:100%;border-collapse:collapse;font-size:13px}
+  .item td{padding:3px 0;vertical-align:top}
+  .item td.k{color:var(--muted);width:35%;padding-right:10px}
+  .jobs table{width:100%;border-collapse:collapse;font-size:13px}
+  .jobs th,.jobs td{text-align:left;padding:8px;border-bottom:1px solid var(--border)}
+  .jobs th{color:var(--muted);font-weight:600}
+  a{color:var(--accent)}
+  .toplinks{display:flex;gap:14px;margin-top:10px}
+  code{background:#0d0f14;padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📄 Extrator Custom de PDFs — IA</h1>
+  <p>Envie um PDF e descreva, em linguagem natural, exatamente o que deve ser extraído dele.</p>
+  <div class="toplinks">
+    <a href="{{ pgadmin_url }}" target="_blank">🗄️ pgAdmin</a>
+    <a href="{{ openwebui_url }}" target="_blank">🤖 Open WebUI</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <form id="form">
+      <label for="file">Arquivo PDF</label>
+      <input type="file" id="file" name="file" accept="application/pdf" required>
+
+      <div style="height:16px"></div>
+
+      <label for="instrucao">O que você quer extrair deste documento?</label>
+      <textarea id="instrucao" name="instrucao" required
+        placeholder="Ex: Extraia todas as cláusulas de reajuste do aluguel, com o índice usado, a periodicidade e o percentual aplicado."></textarea>
+      <div class="hint">Seja específico: quanto mais clara a instrução, mais preciso o resultado. A instrução define exatamente o formato dos itens extraídos.</div>
+
+      <button type="submit" id="btn">Extrair</button>
+    </form>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <h3 id="resultTitle"></h3>
+    <div id="resultItems"></div>
+  </div>
+
+  <div class="card jobs">
+    <h3>Jobs anteriores</h3>
+    <table id="jobsTable">
+      <thead><tr><th>ID</th><th>Arquivo</th><th>Instrução</th><th>Itens</th><th>Data</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('form');
+const btn = document.getElementById('btn');
+const statusEl = document.getElementById('status');
+const resultCard = document.getElementById('resultCard');
+const resultTitle = document.getElementById('resultTitle');
+const resultItems = document.getElementById('resultItems');
+const jobsBody = document.querySelector('#jobsTable tbody');
+
+async function loadJobs(){
+  try{
+    const res = await fetch('/api/jobs');
+    const jobs = await res.json();
+    jobsBody.innerHTML = jobs.map(j => `
+      <tr>
+        <td><a href="/api/jobs/${j.job_id}" target="_blank">${j.job_id}</a></td>
+        <td>${j.source_file || ''}</td>
+        <td>${(j.instrucao || '').slice(0,60)}</td>
+        <td>${j.total}</td>
+        <td>${(j.created_at || '').slice(0,16).replace('T',' ')}</td>
+      </tr>`).join('');
+  }catch(e){ /* silencioso */ }
+}
+
+form.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  btn.disabled = true;
+  statusEl.className = 'status';
+  statusEl.textContent = '⏳ Processando — isso pode levar alguns minutos em PDFs grandes…';
+  resultCard.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', document.getElementById('file').files[0]);
+  fd.append('instrucao', document.getElementById('instrucao').value);
+
+  try{
+    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if(!res.ok){
+      statusEl.className = 'status err';
+      statusEl.textContent = '❌ ' + (data.error || 'Erro desconhecido');
+      return;
+    }
+
+    statusEl.className = 'status ok';
+    statusEl.textContent = `✔ Job ${data.job_id} concluído — ${data.total} item(ns) extraído(s)` +
+      (data.from_cache ? ' (documento reaproveitado do cache)' : '');
+
+    resultTitle.textContent = `Itens extraídos — Job ${data.job_id}`;
+    resultItems.innerHTML = data.items.map(it => `
+      <div class="item">
+        <h4>${it.resumo}</h4>
+        <div class="ref">Referência: ${it.trecho_referencia}</div>
+        <table>${Object.entries(it.dados || {}).map(([k,v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('')}</table>
+      </div>`).join('') || '<p>Nenhum item encontrado para a instrução fornecida.</p>';
+    resultCard.style.display = 'block';
+
+    loadJobs();
+  }catch(e){
+    statusEl.className = 'status err';
+    statusEl.textContent = '❌ Erro de rede: ' + e.message;
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+loadJobs();
+</script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+services:
+
+  # ─── Banco de dados ───────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: extractor_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-extractor}
+      POSTGRES_USER:     ${POSTGRES_USER:-extractor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-extractor123}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-extractor} -d ${POSTGRES_DB:-extractor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - extractor_net
+
+  # ─── Aplicação Flask ──────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: extractor_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-extractor}:${POSTGRES_PASSWORD:-extractor123}@db:5432/${POSTGRES_DB:-extractor}
+    volumes:
+      - chroma_data:/app/chroma_db
+      - uploads_tmp:/app/uploads
+    ports:
+      - "0.0.0.0:5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - extractor_net
+
+  # ─── MCP Server ───────────────────────────────────────────────────────────
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    container_name: extractor_mcp
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-extractor}:${POSTGRES_PASSWORD:-extractor123}@db:5432/${POSTGRES_DB:-extractor}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8000
+    ports:
+      - "0.0.0.0:8010:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - extractor_net
+
+  # ─── MCPO — proxy MCP → OpenAPI ──────────────────────────────────────────
+  mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: extractor_mcpo
+    restart: unless-stopped
+    depends_on:
+      mcp:
+        condition: service_healthy
+    command: >
+      --host 0.0.0.0
+      --port 8001
+      --api-key "extractor-mcpo"
+      --
+      npx -y supergateway --sse http://mcp:8000/sse
+    ports:
+      - "0.0.0.0:8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/openapi.json || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - extractor_net
+
+  # ─── Open WebUI ───────────────────────────────────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: extractor_openwebui
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+      mcpo:
+        condition: service_healthy
+    environment:
+      WEBUI_SECRET_KEY:    ${WEBUI_SECRET_KEY:-extractor-secret-change-me}
+      WEBUI_NAME:          "Extrator Custom de PDFs"
+      DEFAULT_LOCALE:      "pt-BR"
+      ENABLE_SIGNUP:       "true"
+      ENABLE_OLLAMA_API:   "false"
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-http://app:5000/api/v1/public}
+      OPENAI_API_KEY:      ${OPENAI_API_KEY:-""}
+    volumes:
+      - openwebui_data:/app/backend/data
+    ports:
+      - "0.0.0.0:3000:8080"
+    networks:
+      - extractor_net
+
+  # ─── pgAdmin ──────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: extractor_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL:                   ${PGADMIN_EMAIL:-admin@extractor.com}
+      PGADMIN_DEFAULT_PASSWORD:                ${PGADMIN_PASSWORD:-admin123}
+      PGADMIN_CONFIG_SERVER_MODE:              "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGADMIN_CONFIG_WTF_CSRF_ENABLED:         "False"
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "False"
+      PGADMIN_CONFIG_SESSION_COOKIE_SAMESITE:  "'None'"
+      PGADMIN_CONFIG_SESSION_COOKIE_SECURE:    "True"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin_servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "0.0.0.0:5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - extractor_net
+
+volumes:
+  pg_data:
+    driver: local
+  chroma_data:
+    driver: local
+  uploads_tmp:
+    driver: local
+  pgadmin_data:
+    driver: local
+  openwebui_data:
+    driver: local
+
+networks:
+  extractor_net:
+    driver: bridge

@@ -1,0 +1,14 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Extrator — PostgreSQL",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "extractor",
+      "Username": "extractor",
+      "SSLMode": "prefer",
+      "PassFile": "/tmp/pgpassfile"
+    }
+  }
+}
