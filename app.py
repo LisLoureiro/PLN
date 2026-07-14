@@ -118,8 +118,8 @@ def index():
 
 @flask_app.route("/library")
 def library():
-    """Biblioteca de cláusulas aprovadas."""
-    return render_template("library.html")
+    """Redireciona para a página principal (biblioteca integrada)."""
+    return redirect("/")
 
 
 @flask_app.route("/db")

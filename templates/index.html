@@ -2,161 +2,586 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<title>Extrator Custom de PDFs — IA</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gabinete de Cláusulas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600;6..72,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#0f1115; --panel:#171a21; --border:#2a2e38; --text:#e8eaf0;
-    --muted:#9aa1ae; --accent:#6ea8fe; --accent2:#8b5cf6; --ok:#22c55e; --err:#ef4444;
+    --page:       #F5F6F8;
+    --paper:      #FFFFFF;
+    --ink:        #16213D;
+    --ink-soft:   #57607A;
+    --ink-faint:  #98A0B3;
+    --navy:       #16213D;
+    --navy-2:     #24304F;
+    --accent:     #4A5A7A;
+    --border:     #E2E5EA;
+    --ok:         #2F6F4F;
+    --err:        #A13B3B;
+    --serif: "Newsreader", Georgia, serif;
+    --sans: "Inter", -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", monospace;
+    --r-lg: 16px;
+    --r-md: 10px;
+    --r-sm: 8px;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
-  header{padding:28px 32px;border-bottom:1px solid var(--border)}
-  header h1{margin:0;font-size:22px}
-  header p{margin:6px 0 0;color:var(--muted);font-size:14px}
-  .wrap{max-width:960px;margin:0 auto;padding:32px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:24px}
-  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;font-weight:600}
-  textarea, input[type=file]{
-    width:100%;background:#0d0f14;border:1px solid var(--border);border-radius:10px;
-    color:var(--text);padding:12px;font-size:14px;font-family:inherit
+  html,body{margin:0;padding:0}
+  body{
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
   }
-  textarea{min-height:110px;resize:vertical}
-  .row{display:flex;gap:16px;flex-wrap:wrap}
-  .row > div{flex:1;min-width:240px}
-  button{
-    background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:#fff;
-    padding:12px 22px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:16px
+
+  /* ---------- Top bar ---------- */
+  header.topbar{
+    background: var(--paper);
+    border-bottom: 1px solid var(--border);
   }
-  button:disabled{opacity:.5;cursor:not-allowed}
-  .hint{font-size:12px;color:var(--muted);margin-top:8px}
-  .status{margin-top:14px;font-size:14px}
-  .status.ok{color:var(--ok)} .status.err{color:var(--err)}
-  .item{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;background:#0d0f14}
-  .item h4{margin:0 0 6px;font-size:15px}
-  .item .ref{color:var(--muted);font-size:12px;margin-bottom:8px}
-  .item table{width:100%;border-collapse:collapse;font-size:13px}
-  .item td{padding:3px 0;vertical-align:top}
-  .item td.k{color:var(--muted);width:35%;padding-right:10px}
-  .jobs table{width:100%;border-collapse:collapse;font-size:13px}
-  .jobs th,.jobs td{text-align:left;padding:8px;border-bottom:1px solid var(--border)}
-  .jobs th{color:var(--muted);font-weight:600}
-  a{color:var(--accent)}
-  .toplinks{display:flex;gap:14px;margin-top:10px}
-  code{background:#0d0f14;padding:2px 6px;border-radius:6px}
+  .topbar-inner{
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 14px clamp(20px,4vw,48px);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:20px;
+  }
+  .brand{
+    appearance:none; border:none; background:transparent; cursor:pointer;
+    display:flex; align-items:center; gap:10px; padding:4px 2px;
+  }
+  .brand .mark{
+    width:28px;height:28px;border-radius:50%;
+    border:1.3px solid var(--navy);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--serif); font-size:13px; color:var(--navy);
+    flex:0 0 auto;
+  }
+  .brand .wordmark{
+    font-family:var(--serif); font-weight:600; font-size:15px; color:var(--navy);
+  }
+  nav.nav-buttons{ display:flex; gap:4px; }
+  .nav-btn{
+    appearance:none; border:none; background:transparent; cursor:pointer;
+    font-family:var(--sans); font-weight:500; font-size:13.5px;
+    color: var(--ink-faint);
+    padding:8px 14px;
+    border-radius: 100px;
+    transition: color .15s ease, background .15s ease;
+  }
+  .nav-btn:hover{ background: var(--page); color: var(--ink-soft); }
+  .nav-btn.active{ color: var(--navy); background: var(--page); font-weight:600; }
+
+  main{ max-width: 1040px; margin: 0 auto; padding: 0 clamp(20px,4vw,48px); }
+  .pane{ display:none; }
+  .pane.active{ display:block; }
+
+  /* ---------- Hero / landing ---------- */
+  #pane-sobre{ padding: clamp(56px,9vw,96px) 0 clamp(48px,7vw,72px); }
+  .eyebrow{
+    font-family: var(--mono); font-size:12px; letter-spacing:0.06em;
+    color: var(--accent); text-transform:uppercase; margin:0 0 16px;
+  }
+  .hero-title{
+    font-family: var(--serif); font-weight:600; font-size: clamp(30px,4.4vw,44px);
+    line-height:1.18; color: var(--ink); margin:0 0 20px; max-width:680px;
+  }
+  .hero-sub{
+    font-size: clamp(15px,1.6vw,17px); line-height:1.6; color: var(--ink-soft);
+    max-width:560px; margin:0 0 32px;
+  }
+  .hero-cta{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:80px; }
+  .btn-primary, .btn-secondary{
+    appearance:none; border:none; cursor:pointer;
+    font-family: var(--sans); font-weight:600; font-size:14.5px;
+    padding:13px 26px; border-radius: var(--r-sm);
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .btn-primary{ background: var(--navy); color:#F3F4F7; }
+  .btn-primary:hover{ background: var(--navy-2); }
+  .btn-secondary{ background: transparent; color: var(--navy); border:1px solid var(--border); }
+  .btn-secondary:hover{ border-color: var(--accent); }
+
+  .features{
+    display:grid; grid-template-columns: 1fr 1fr; gap:1px;
+    background: var(--border); border-radius: var(--r-lg); overflow:hidden;
+    margin-bottom:40px;
+  }
+  .feature{ background: var(--paper); padding: 32px clamp(24px,3vw,36px); }
+  .feature-icon{ margin-bottom:18px; color: var(--navy); }
+  .feature h3{
+    font-family: var(--serif); font-weight:600; font-size:17px; color: var(--navy); margin:0 0 8px;
+  }
+  .feature p{
+    font-size:14px; line-height:1.65; color: var(--ink-soft); margin:0;
+  }
+
+  .hero-note{ font-size:12px; color: var(--ink-faint); font-family: var(--mono); }
+
+  /* ---------- Cards wrapping tool panes ---------- */
+  .card-wrap{
+    background: var(--paper);
+    border-radius: var(--r-lg);
+    box-shadow: 0 1px 2px rgba(22,33,61,0.04), 0 8px 20px rgba(22,33,61,0.05);
+    padding: clamp(28px,4vw,44px);
+    margin: 32px 0 48px;
+  }
+
+  h2.section-title{
+    font-family: var(--serif); font-weight:600; font-size: 20px; color: var(--navy); margin: 0 0 6px;
+  }
+  .section-sub{
+    color: var(--ink-soft); font-size:13.5px; margin: 0 0 28px; max-width: 560px; line-height:1.55;
+  }
+
+  #pane-extrator label{ display:block; font-size:13px; color: var(--ink-soft); margin-bottom:8px; }
+  #pane-extrator input[type=file]{
+    width:100%; background: var(--page); border:1px solid var(--border); border-radius: var(--r-sm);
+    color: var(--ink); padding:11px 13px; font-size:13.5px; font-family: var(--sans);
+  }
+  #pane-extrator textarea{
+    width:100%; background: var(--page); border:1px solid var(--border); border-radius: var(--r-sm);
+    color: var(--ink); padding:13px; font-size:14px; font-family: var(--sans);
+    min-height:94px; resize:vertical; line-height:1.5;
+  }
+  #pane-extrator textarea:focus, #pane-extrator input:focus{
+    outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,90,122,0.12);
+  }
+  #pane-extrator .field{ margin-bottom:20px; }
+  #pane-extrator .hint{ font-size:12px; color: var(--ink-faint); margin-top:8px; line-height:1.5; }
+
+  button.primary{
+    appearance:none; border:none; background: var(--navy); color:#F3F4F7;
+    padding:11px 24px; border-radius: var(--r-sm); font-size:14px; font-weight:600;
+    font-family: var(--sans); cursor:pointer; transition: background .15s ease;
+  }
+  button.primary:hover{ background: var(--navy-2); }
+  button.primary:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .status{ margin-top:16px; font-size:13px; font-family: var(--mono); }
+  .status.ok{ color: var(--ok); }
+  .status.err{ color: var(--err); }
+
+  .divider{ height:1px; background: var(--border); margin: 32px 0; border:none; }
+
+  #resultBlock h3{ font-family: var(--serif); font-size:16px; color: var(--navy); margin: 0 0 16px; font-weight:600; }
+  .item{
+    border:1px solid var(--border); border-radius: var(--r-md); padding:15px 17px; margin-bottom:10px; background: var(--paper);
+  }
+  .item h4{ margin:0 0 5px; font-family: var(--serif); font-size:15px; font-weight:600; color: var(--ink); }
+  .item .ref{ color: var(--ink-faint); font-size:11px; font-family: var(--mono); margin-bottom:10px; }
+  .item table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .item td{ padding:4px 0; vertical-align:top; }
+  .item td.k{ color: var(--ink-soft); width:35%; padding-right:10px; font-family: var(--mono); font-size:11px; }
+
+  #jobsBlock h3{ font-family: var(--serif); font-size:16px; color: var(--navy); margin: 0 0 14px; font-weight:600; }
+  .job-row{
+    display:flex; align-items:baseline; gap:14px; padding:11px 4px;
+    border-bottom:1px solid var(--border); font-size:13px;
+  }
+  .job-row:last-child{ border-bottom:none; }
+  .job-row a{ color: var(--navy); font-family: var(--mono); font-size:12px; text-decoration:none; }
+  .job-row .instr{ color: var(--ink-soft); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .job-row .meta{ color: var(--ink-faint); font-family: var(--mono); font-size:11px; flex:0 0 auto; }
+  .job-empty{ color: var(--ink-faint); font-size:13px; font-family: var(--mono); padding:8px 4px; }
+
+  .stats{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-bottom:26px; }
+  .stat-card{ background: var(--page); border-radius: var(--r-md); padding:15px 17px; }
+  .stat-card h3{ font-size:11px; color: var(--ink-soft); margin:0 0 6px; font-weight:500; }
+  .stat-card .value{ font-family: var(--serif); font-size:24px; font-weight:600; color: var(--navy); }
+
+  #pane-biblioteca input[type=text], #pane-biblioteca select{
+    width:100%; background: var(--page); border:1px solid var(--border); border-radius: var(--r-sm);
+    color: var(--ink); padding:11px 13px; font-size:14px; font-family: var(--sans);
+  }
+  #pane-biblioteca input:focus, #pane-biblioteca select:focus{
+    outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,90,122,0.12);
+  }
+  #pane-biblioteca label{ display:block; font-size:13px; color: var(--ink-soft); margin-bottom:8px; }
+  .search-row{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-top:14px; }
+  .search-row > div{ flex:1; min-width:180px; }
+
+  .clause-card{
+    background: var(--paper); border:1px solid var(--border); border-radius: var(--r-md);
+    padding:17px 19px; margin-bottom:12px;
+  }
+  .clause-card .type{
+    display:inline-block; background: var(--navy); color:#F3F4F7; padding:3px 10px;
+    border-radius: 100px; font-size:10.5px; font-family: var(--mono); margin-bottom:10px;
+  }
+  .clause-card h3{ margin:0 0 8px; font-family: var(--serif); font-size:16px; color: var(--ink); }
+  .clause-card .summary{ color: var(--ink-soft); line-height:1.6; margin-bottom:10px; font-size:14px; }
+  .clause-card .meta{ font-size:11px; color: var(--ink-faint); font-family: var(--mono); }
+  .clause-card .tags{ margin-top:10px; }
+  .clause-card .tag{
+    display:inline-block; background: var(--page); border:1px solid var(--border); color: var(--ink-soft);
+    padding:3px 11px; border-radius: 100px; font-size:10px; margin-right:6px; font-family: var(--mono);
+  }
+  .loading, .no-results{ text-align:center; padding:36px; color: var(--ink-faint); font-family: var(--mono); font-size:13px; }
+  .approve-buttons{ margin-top:14px; display:flex; gap:8px; }
+  .approve-buttons button{
+    padding:7px 15px; border:none; border-radius: 100px; cursor:pointer;
+    font-size:12px; font-weight:600; font-family: var(--sans);
+  }
+  .approve-buttons .approve{ background: var(--ok); color:#fff; }
+  .approve-buttons .reject{ background: var(--err); color:#fff; }
+
+  footer{
+    max-width:1040px; margin:0 auto; padding:16px clamp(20px,4vw,48px) 40px;
+    color: var(--ink-faint); font-size:11px; font-family: var(--mono);
+  }
+
+  @media (max-width: 680px){
+    .features{ grid-template-columns: 1fr; }
+    .nav-btn{ padding:8px 10px; font-size:13px; }
+    .brand .wordmark{ display:none; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>📄 Extrator Custom de PDFs — IA</h1>
-  <p>Envie um PDF e descreva, em linguagem natural, exatamente o que deve ser extraído dele.</p>
-  <div class="toplinks">
-    <a href="/library" target="_blank">📚 Biblioteca de Cláusulas</a>
-    <a href="{{ pgadmin_url }}" target="_blank">🗄️ pgAdmin</a>
-    <a href="{{ openwebui_url }}" target="_blank">🤖 Open WebUI</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <button class="brand" data-pane="sobre">
+      <span class="mark">§</span>
+      <span class="wordmark">Gabinete de Cláusulas</span>
+    </button>
+    <nav class="nav-buttons">
+      <button class="nav-btn" data-pane="extrator">Extrator de PDFs</button>
+      <button class="nav-btn" data-pane="biblioteca">Biblioteca de Cláusulas</button>
+    </nav>
   </div>
 </header>
 
-<div class="wrap">
-  <div class="card">
-    <form id="form">
-      <label for="file">Arquivo PDF</label>
-      <input type="file" id="file" name="file" accept="application/pdf" required>
+<main>
 
-      <div style="height:16px"></div>
+  <section class="pane active" id="pane-sobre">
+    <p class="eyebrow">gabinete de cláusulas</p>
+    <h1 class="hero-title">Cláusulas contratuais, resolvidas com precisão.</h1>
+    <p class="hero-sub">Extraia informação de qualquer PDF sob demanda, ou reaproveite cláusulas já redigidas e aprovadas em contratos anteriores — duas ferramentas, um só lugar.</p>
+    <div class="hero-cta">
+      <button class="btn-primary" data-pane="extrator">Usar o extrator</button>
+      <button class="btn-secondary" data-pane="biblioteca">Ver biblioteca de cláusulas</button>
+    </div>
 
-      <label for="instrucao">O que você quer extrair deste documento?</label>
-      <textarea id="instrucao" name="instrucao" required
-        placeholder="Ex: Extraia todas as cláusulas de reajuste do aluguel, com o índice usado, a periodicidade e o percentual aplicado."></textarea>
-      <div class="hint">Seja específico: quanto mais clara a instrução, mais preciso o resultado. A instrução define exatamente o formato dos itens extraídos.</div>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M6 3h9l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+            <path d="M14 3v5h5"/>
+            <path d="M8.5 12h7M8.5 15h7M8.5 9h3"/>
+          </svg>
+        </div>
+        <h3>Extrator de PDFs</h3>
+        <p>Envie um contrato e descreva, em linguagem natural, o que quer extrair — a IA lê o documento e devolve os itens encontrados, com o trecho de referência no original.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5A2.5 2.5 0 0 1 17.5 21H6.5A2.5 2.5 0 0 1 4 18.5v-13z"/>
+            <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20"/>
+            <path d="M8 7.5h8M8 10.5h8"/>
+          </svg>
+        </div>
+        <h3>Biblioteca de Cláusulas</h3>
+        <p>Um repositório de cláusulas já usadas em contratos anteriores. Busque por assunto ou tipo, e aprove ou rejeite precedentes pendentes de revisão.</p>
+      </div>
+    </div>
 
-      <button type="submit" id="btn">Extrair</button>
-    </form>
-    <div id="status" class="status"></div>
-  </div>
+    <p class="hero-note">uso interno — os dados extraídos e as cláusulas aqui não substituem revisão jurídica</p>
+  </section>
 
-  <div class="card" id="resultCard" style="display:none">
-    <h3 id="resultTitle"></h3>
-    <div id="resultItems"></div>
-  </div>
+  <section class="pane" id="pane-extrator">
+    <div class="card-wrap">
+      <h2 class="section-title">Extrator custom de PDFs</h2>
+      <p class="section-sub">Envie um PDF e descreva o que deve ser extraído dele.</p>
 
-  <div class="card jobs">
-    <h3>Jobs anteriores</h3>
-    <table id="jobsTable">
-      <thead><tr><th>ID</th><th>Arquivo</th><th>Instrução</th><th>Itens</th><th>Data</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</div>
+      <form id="form">
+        <div class="field">
+          <label for="file">Arquivo PDF</label>
+          <input type="file" id="file" name="file" accept="application/pdf" required>
+        </div>
+
+        <div class="field">
+          <label for="instrucao">O que você quer extrair?</label>
+          <textarea id="instrucao" name="instrucao" required
+            placeholder="Ex: extraia todas as cláusulas de reajuste do aluguel, com o índice usado, a periodicidade e o percentual aplicado."></textarea>
+          <div class="hint">Quanto mais específica a instrução, mais preciso o resultado — ela define o formato dos itens extraídos.</div>
+        </div>
+
+        <button type="submit" class="primary" id="btn">Extrair</button>
+        <div id="status" class="status"></div>
+      </form>
+
+      <div id="resultBlock" style="display:none">
+        <hr class="divider">
+        <h3 id="resultTitle"></h3>
+        <div id="resultItems"></div>
+      </div>
+
+      <hr class="divider">
+
+      <div id="jobsBlock">
+        <h3>Jobs anteriores</h3>
+        <div id="jobsList"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-biblioteca">
+    <div class="card-wrap">
+      <h2 class="section-title">Biblioteca de cláusulas aprovadas</h2>
+      <p class="section-sub">Precedentes extraídos de contratos anteriores da empresa.</p>
+
+      <div class="stats" id="stats"></div>
+
+      <label for="searchInput">Buscar precedentes</label>
+      <input type="text" id="searchInput" placeholder="Ex: como já redigimos cláusula de força maior para contratos de SaaS">
+
+      <div class="search-row">
+        <div>
+          <label for="typeFilter">Tipo</label>
+          <select id="typeFilter">
+            <option value="">Todos os tipos</option>
+            <option value="forca_maior">Força Maior</option>
+            <option value="rescisao">Rescisão</option>
+            <option value="multa">Multa/Penalidade</option>
+            <option value="reajuste">Reajuste</option>
+            <option value="confidencialidade">Confidencialidade</option>
+            <option value="pagamento">Pagamento</option>
+          </select>
+        </div>
+        <button class="primary" onclick="search()">Buscar</button>
+      </div>
+
+      <div style="height:26px"></div>
+      <div class="results" id="results"></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>gabinete de cláusulas — uso interno</footer>
 
 <script>
-const form = document.getElementById('form');
-const btn = document.getElementById('btn');
-const statusEl = document.getElementById('status');
-const resultCard = document.getElementById('resultCard');
-const resultTitle = document.getElementById('resultTitle');
-const resultItems = document.getElementById('resultItems');
-const jobsBody = document.querySelector('#jobsTable tbody');
+  function switchPane(name){
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.pane === name));
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+    document.getElementById('pane-' + name).classList.add('active');
+    window.scrollTo({top:0, behavior:'instant'});
+  }
+  document.querySelectorAll('[data-pane]').forEach(el => {
+    el.addEventListener('click', () => switchPane(el.dataset.pane));
+  });
 
-async function loadJobs(){
-  try{
-    const res = await fetch('/api/jobs');
-    const jobs = await res.json();
-    jobsBody.innerHTML = jobs.map(j => `
-      <tr>
-        <td><a href="/api/jobs/${j.job_id}" target="_blank">${j.job_id}</a></td>
-        <td>${j.source_file || ''}</td>
-        <td>${(j.instrucao || '').slice(0,60)}</td>
-        <td>${j.total}</td>
-        <td>${(j.created_at || '').slice(0,16).replace('T',' ')}</td>
-      </tr>`).join('');
-  }catch(e){ /* silencioso */ }
-}
+  const API_BASE = '/api';
 
-form.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  btn.disabled = true;
-  statusEl.className = 'status';
-  statusEl.textContent = '⏳ Processando — isso pode levar alguns minutos em PDFs grandes…';
-  resultCard.style.display = 'none';
+  const form = document.getElementById('form');
+  const btn = document.getElementById('btn');
+  const statusEl = document.getElementById('status');
+  const resultBlock = document.getElementById('resultBlock');
+  const resultTitle = document.getElementById('resultTitle');
+  const resultItems = document.getElementById('resultItems');
+  const jobsList = document.getElementById('jobsList');
 
-  const fd = new FormData();
-  fd.append('file', document.getElementById('file').files[0]);
-  fd.append('instrucao', document.getElementById('instrucao').value);
+  async function loadJobs(){
+    try{
+      const res = await fetch('/api/jobs');
+      const jobs = await res.json();
+      if (!jobs || jobs.length === 0){
+        jobsList.innerHTML = '<div class="job-empty">nenhum job registrado ainda</div>';
+        return;
+      }
+      jobsList.innerHTML = jobs.map(j => `
+        <div class="job-row">
+          <a href="/api/jobs/${j.job_id}" target="_blank">${j.job_id}</a>
+          <span class="instr">${j.source_file || ''} — ${(j.instrucao || '').slice(0,70)}</span>
+          <span class="meta">${j.total} item(ns) · ${(j.created_at || '').slice(0,16).replace('T',' ')}</span>
+        </div>`).join('');
+    }catch(e){ /* silencioso */ }
+  }
 
-  try{
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
-    const data = await res.json();
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    btn.disabled = true;
+    statusEl.className = 'status';
+    statusEl.textContent = '⏳ processando — pode levar alguns minutos em PDFs grandes…';
+    resultBlock.style.display = 'none';
 
-    if(!res.ok){
+    const fd = new FormData();
+    fd.append('file', document.getElementById('file').files[0]);
+    fd.append('instrucao', document.getElementById('instrucao').value);
+
+    try{
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if(!res.ok){
+        statusEl.className = 'status err';
+        statusEl.textContent = '✕ ' + (data.error || 'erro desconhecido');
+        return;
+      }
+
+      statusEl.className = 'status ok';
+      statusEl.textContent = `✔ job ${data.job_id} concluído — ${data.total} item(ns) extraído(s)` +
+        (data.from_cache ? ' (documento reaproveitado do cache)' : '');
+
+      resultTitle.textContent = `Itens extraídos — job ${data.job_id}`;
+      resultItems.innerHTML = data.items.map(it => `
+        <div class="item">
+          <h4>${it.resumo}</h4>
+          <div class="ref">referência: ${it.trecho_referencia}</div>
+          <table>${Object.entries(it.dados || {}).map(([k,v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('')}</table>
+        </div>`).join('') || '<p style="color:var(--ink-faint); font-size:14px;">nenhum item encontrado para a instrução fornecida.</p>';
+      resultBlock.style.display = 'block';
+
+      loadJobs();
+    }catch(e){
       statusEl.className = 'status err';
-      statusEl.textContent = '❌ ' + (data.error || 'Erro desconhecido');
+      statusEl.textContent = '✕ erro de rede: ' + e.message;
+    }finally{
+      btn.disabled = false;
+    }
+  });
+
+  loadJobs();
+
+  async function loadStats() {
+    try {
+      const res = await fetch(`${API_BASE}/clauses/stats`);
+      const data = await res.json();
+
+      document.getElementById('stats').innerHTML = `
+        <div class="stat-card">
+          <h3>Total de Cláusulas</h3>
+          <div class="value">${data.total_clauses || 0}</div>
+        </div>
+        <div class="stat-card">
+          <h3>Aprovadas</h3>
+          <div class="value">${data.approved || 0}</div>
+        </div>
+        <div class="stat-card">
+          <h3>Pendentes</h3>
+          <div class="value">${data.pending || 0}</div>
+        </div>
+      `;
+
+      if (data.by_type) {
+        for (const [type, count] of Object.entries(data.by_type)) {
+          document.getElementById('stats').innerHTML += `
+            <div class="stat-card">
+              <h3>${type}</h3>
+              <div class="value">${count}</div>
+            </div>
+          `;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  }
+
+  async function search() {
+    const query = document.getElementById('searchInput').value;
+    const type = document.getElementById('typeFilter').value;
+
+    if (!query && !type) {
+      alert('Digite uma busca ou selecione um tipo');
       return;
     }
 
-    statusEl.className = 'status ok';
-    statusEl.textContent = `✔ Job ${data.job_id} concluído — ${data.total} item(ns) extraído(s)` +
-      (data.from_cache ? ' (documento reaproveitado do cache)' : '');
+    document.getElementById('results').innerHTML = '<div class="loading">buscando…</div>';
 
-    resultTitle.textContent = `Itens extraídos — Job ${data.job_id}`;
-    resultItems.innerHTML = data.items.map(it => `
-      <div class="item">
-        <h4>${it.resumo}</h4>
-        <div class="ref">Referência: ${it.trecho_referencia}</div>
-        <table>${Object.entries(it.dados || {}).map(([k,v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('')}</table>
-      </div>`).join('') || '<p>Nenhum item encontrado para a instrução fornecida.</p>';
-    resultCard.style.display = 'block';
+    try {
+      const res = await fetch(`${API_BASE}/clauses/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query || type, type, top_k: 20 })
+      });
 
-    loadJobs();
-  }catch(e){
-    statusEl.className = 'status err';
-    statusEl.textContent = '❌ Erro de rede: ' + e.message;
-  }finally{
-    btn.disabled = false;
+      const data = await res.json();
+      displayResults(data.results);
+    } catch (error) {
+      document.getElementById('results').innerHTML = '<div class="no-results">erro na busca</div>';
+    }
   }
-});
 
-loadJobs();
+  function displayResults(results) {
+    const container = document.getElementById('results');
+
+    if (!results || results.length === 0) {
+      container.innerHTML = '<div class="no-results">nenhum resultado encontrado</div>';
+      return;
+    }
+
+    container.innerHTML = results.map(clause => `
+      <div class="clause-card">
+        <span class="type">${clause.clause_type}</span>
+        <h3>${clause.title || clause.summary?.substring(0, 100)}</h3>
+        <p class="summary">${clause.summary}</p>
+        <div class="meta">
+          fonte: ${clause.source_file || 'N/A'} ·
+          usado ${clause.times_used || 0}x
+          ${clause.relevance_score ? ` · relevância ${(clause.relevance_score * 100).toFixed(0)}%` : ''}
+        </div>
+        ${clause.tags && clause.tags.length ? `
+          <div class="tags">
+            ${clause.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+          </div>
+        ` : ''}
+        ${clause.approval_status === 'pending' ? `
+          <div class="approve-buttons">
+            <button class="approve" onclick="approveClause(${clause.id})">✓ aprovar</button>
+            <button class="reject" onclick="rejectClause(${clause.id})">✕ rejeitar</button>
+          </div>
+        ` : ''}
+      </div>
+    `).join('');
+  }
+
+  async function approveClause(id) {
+    const approvedBy = prompt('Seu nome:');
+    if (!approvedBy) return;
+
+    try {
+      await fetch(`${API_BASE}/clauses/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approved_by: approvedBy })
+      });
+      alert('Cláusula aprovada!');
+      search();
+    } catch (error) {
+      alert('Erro ao aprovar');
+    }
+  }
+
+  async function rejectClause(id) {
+    const reason = prompt('Motivo da rejeição:');
+    if (!reason) return;
+
+    try {
+      await fetch(`${API_BASE}/clauses/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rejected_by: 'Usuario', notes: reason })
+      });
+      alert('Cláusula rejeitada');
+      search();
+    } catch (error) {
+      alert('Erro ao rejeitar');
+    }
+  }
+
+  document.getElementById('searchInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') search();
+  });
+
+  loadStats();
 </script>
 </body>
 </html>
