@@ -10,6 +10,7 @@ COPY requirements_mcp.txt .
 RUN pip install --no-cache-dir -r requirements_mcp.txt
 
 COPY mcp_server.py .
+COPY tfidf_utils.py .
 
 EXPOSE 8000
 

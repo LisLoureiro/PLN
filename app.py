@@ -21,6 +21,7 @@ from store import Store
 from vectorizer import Vectorizer
 
 from mcp_server import app as mcp_asgi_app
+from clause_library import setup_clause_routes
 
 # ─────────────────────────────────────────────────────────────
 # Logging com cores e separadores visuais
@@ -71,6 +72,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 MIN_INSTRUCAO_CHARS = 8
 
+# Configura rotas da biblioteca de cláusulas
+setup_clause_routes(flask_app)
+
 
 def _pgadmin_url(req) -> str:
     override = os.environ.get("PGADMIN_URL", "")
@@ -110,6 +114,12 @@ def index():
         pgadmin_url=_pgadmin_url(request),
         openwebui_url=_openwebui_url(request),
     )
+
+
+@flask_app.route("/library")
+def library():
+    """Biblioteca de cláusulas aprovadas."""
+    return render_template("library.html")
 
 
 @flask_app.route("/db")

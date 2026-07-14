@@ -33,7 +33,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER:-extractor}:${POSTGRES_PASSWORD:-extractor123}@db:5432/${POSTGRES_DB:-extractor}
     volumes:
-      - chroma_data:/app/chroma_db
       - uploads_tmp:/app/uploads
     ports:
       - "0.0.0.0:5000:5000"
@@ -151,8 +150,6 @@ services:
 
 volumes:
   pg_data:
-    driver: local
-  chroma_data:
     driver: local
   uploads_tmp:
     driver: local

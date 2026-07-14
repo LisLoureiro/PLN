@@ -117,9 +117,8 @@ Resposta:
 - `extraction_jobs` — instrução usada + itens extraídos (JSON de formato
   livre) por job
 
-**ChromaDB** (`./chroma_db/`):
-- `extracted_items` — cada item extraído, indexado pelo `resumo` (permite
-  busca semântica entre jobs no futuro)
+**Busca de itens**: Implementada via TF-IDF local (scikit-learn) sobre os
+resumos dos itens extraídos.
 
 ## Ferramentas MCP (Open WebUI)
 
