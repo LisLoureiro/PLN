@@ -1,7 +1,7 @@
 """
 store.py
-Persiste documentos e jobs de extração no PostgreSQL, e os itens
-extraídos no ChromaDB para busca semântica futura.
+Persiste documentos e jobs de extração no PostgreSQL.
+Busca de itens feita via TF-IDF local (scikit-learn).
 """
 import json
 import logging
@@ -9,7 +9,6 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import chromadb
 from sqlalchemy import (
     Column, DateTime, Integer, String, Text,
     create_engine,
@@ -51,9 +50,7 @@ class ExtractionJobModel(Base):
     items_json  = Column(Text, default="[]")
     
 class Store:
-    """Camada de persistência dupla: PostgreSQL (metadados) + ChromaDB (busca vetorial)."""
-
-    CHROMA_PATH = "./chroma_db"
+    """Camada de persistência: PostgreSQL (documentos e jobs de extração)."""
 
     def __init__(self):
         db_url = os.environ.get(
@@ -64,16 +61,6 @@ class Store:
         self._Session = sessionmaker(bind=self._engine)
         self._create_tables_safely()
         logger.info("[Store] PostgreSQL conectado.")
-
-        try:
-            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-            _ef = DefaultEmbeddingFunction()
-        except Exception:
-            _ef = None
-
-        self._chroma = chromadb.PersistentClient(path=self.CHROMA_PATH)
-        self._items = self._chroma.get_or_create_collection("extracted_items", embedding_function=_ef)
-        logger.info("[Store] ChromaDB pronto.")
 
     def _create_tables_safely(self, attempts: int = 3) -> None:
         """
@@ -172,21 +159,6 @@ class Store:
             session.commit()
         logger.info("[Store] Job %s salvo no PostgreSQL (%d itens).", job_id, len(items))
 
-        if items:
-            ids, docs, metas = [], [], []
-            for i, item in enumerate(items):
-                ids.append(f"{job_id}_item_{i}")
-                docs.append(item.resumo)
-                metas.append({
-                    "job_id": job_id,
-                    "doc_hash": doc_hash,
-                    "source_file": source_file,
-                    "trecho_referencia": item.trecho_referencia,
-                    "dados_json": json.dumps(item.dados, ensure_ascii=False),
-                })
-            self._items.upsert(ids=ids, documents=docs, metadatas=metas)
-            logger.info("[Store] %d itens salvos no ChromaDB.", len(items))
-
     def list_jobs(self) -> List[Dict[str, Any]]:
         with self._Session() as session:
             rows = session.query(ExtractionJobModel).order_by(ExtractionJobModel.created_at.desc()).all()
@@ -221,11 +193,110 @@ class Store:
             session.commit()
         logger.info("[Store] Job %s removido do PostgreSQL.", job_id)
 
+    def search_items_semantic(self, query: str, top_k: int = 10, method: str = "hybrid") -> List[Dict[str, Any]]:
+        """
+        Busca itens extraídos usando embeddings semânticos.
+
+        Args:
+            query: Texto da busca
+            top_k: Quantidade de resultados
+            method: 'sentence-transformers', 'hybrid', ou 'word2vec'
+
+        Returns:
+            Lista de itens relevantes ordenados por similaridade
+        """
+        from semantic_embedding import create_semantic_embedding
+        import numpy as np
+
+        jobs = self.list_jobs()
+        if not jobs:
+            return []
+
+        # Coleta todos os itens
+        all_items = []
+        for job in jobs:
+            job_detail = self.get_job(job["job_id"])
+            if job_detail:
+                for item in job_detail.get("items", []):
+                    all_items.append({
+                        "job_id": job["job_id"],
+                        "source_file": job.get("source_file", ""),
+                        "instrucao": job.get("instrucao", ""),
+                        "resumo": item.get("resumo", ""),
+                        "trecho_referencia": item.get("trecho_referencia", ""),
+                        "dados": item.get("dados", {}),
+                    })
+
+        if not all_items:
+            return []
+
+        # Cria embedding
+        embedder = create_semantic_embedding(method=method)
+
+        # Embeddings dos resumos
+        summaries = [item["resumo"] for item in all_items]
+        embeddings = np.array(embedder.embed(summaries))
+
+        # Embedding da query
+        query_emb = np.array(embedder.embed([query])[0])
+
+        # Similaridade de cosseno
+        similarities = np.dot(embeddings, query_emb)
+
+        # Ordena
+        ranked = sorted(zip(similarities, all_items), key=lambda x: x[0], reverse=True)
+
+        # Filtra por threshold e retorna top_k
+        threshold = 0.3
+        results = [item for sim, item in ranked if sim > threshold][:top_k]
+
+        logger.info("[Store] Semantic search (%s): %d resultados para '%s'", method, len(results), query[:50])
+
+        return results
+
+    def search_items_tfidf(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+        """
+        Busca itens extraídos usando TF-IDF sobre os resumos.
+        """
         try:
-            result = self._items.get(where={"job_id": job_id}, include=["metadatas"])
-            ids = result.get("ids", [])
-            if ids:
-                self._items.delete(ids=ids)
-                logger.info("[Store] %d itens removidos do ChromaDB.", len(ids))
-        except Exception as e:
-            logger.warning("[Store] Erro ao limpar ChromaDB: %s", e)
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.metrics.pairwise import cosine_similarity
+        except ImportError:
+            raise ImportError("Execute: pip install scikit-learn")
+
+        jobs = self.list_jobs()
+        if not jobs:
+            return []
+
+        # Coleta todos os resumos de todos os jobs
+        all_items = []
+        for job in jobs:
+            job_detail = self.get_job(job["job_id"])
+            if job_detail:
+                for item in job_detail.get("items", []):
+                    all_items.append({
+                        "job_id": job["job_id"],
+                        "source_file": job.get("source_file", ""),
+                        "instrucao": job.get("instrucao", ""),
+                        "resumo": item.get("resumo", ""),
+                        "trecho_referencia": item.get("trecho_referencia", ""),
+                        "dados": item.get("dados", {}),
+                    })
+
+        if not all_items:
+            return []
+
+        # TF-IDF sobre os resumos
+        summaries = [item["resumo"] for item in all_items]
+        vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1)
+        tfidf_matrix = vectorizer.fit_transform(summaries)
+
+        # Busca
+        query_vec = vectorizer.transform([query])
+        sims = cosine_similarity(query_vec, tfidf_matrix).flatten()
+        top_idx = sims.argsort()[::-1][:top_k]
+
+        results = [all_items[i] for i in top_idx if sims[i] > 0]
+        logger.info("[Store] TF-IDF search: %d resultados para query '%s'", len(results), query[:50])
+
+        return results

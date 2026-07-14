@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca de Cláusulas - Extrator Custom</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; margin-bottom: 10px; }
+        .subtitle { color: #666; margin-bottom: 30px; }
+        .search-box { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .search-box input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; }
+        .search-box select { margin-top: 10px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .search-box button { margin-top: 10px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .search-box button:hover { background: #0056b3; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stat-card h3 { font-size: 14px; color: #666; }
+        .stat-card .value { font-size: 28px; font-weight: bold; color: #333; }
+        .results { margin-top: 20px; }
+        .clause-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        .clause-card h3 { color: #333; margin-bottom: 10px; }
+        .clause-card .type { display: inline-block; background: #e9ecef; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-bottom: 10px; }
+        .clause-card .summary { color: #666; line-height: 1.6; margin-bottom: 10px; }
+        .clause-card .meta { font-size: 12px; color: #999; }
+        .clause-card .tags { margin-top: 10px; }
+        .clause-card .tag { display: inline-block; background: #007bff; color: white; padding: 2px 8px; border-radius: 12px; font-size: 11px; margin-right: 5px; }
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .no-results { text-align: center; padding: 40px; color: #999; }
+        .approve-buttons { margin-top: 15px; }
+        .approve-buttons button { padding: 6px 12px; margin-right: 5px; border: none; border-radius: 4px; cursor: pointer; }
+        .approve-buttons .approve { background: #28a745; color: white; }
+        .approve-buttons .reject { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 Biblioteca de Cláusulas Aprovadas</h1>
+        <p class="subtitle">Precedentes extraídos de contratos anteriores da empresa</p>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Ex: como já redigimos cláusula de força maior para contratos de SaaS">
+            <select id="typeFilter">
+                <option value="">Todos os tipos</option>
+                <option value="forca_maior">Força Maior</option>
+                <option value="rescisao">Rescisão</option>
+                <option value="multa">Multa/Penalidade</option>
+                <option value="reajuste">Reajuste</option>
+                <option value="confidencialidade">Confidencialidade</option>
+                <option value="pagamento">Pagamento</option>
+            </select>
+            <button onclick="search()">🔍 Buscar precedentes</button>
+        </div>
+
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/clauses/stats`);
+                const data = await res.json();
+
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat-card">
+                        <h3>Total de Cláusulas</h3>
+                        <div class="value">${data.total_clauses || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Aprovadas</h3>
+                        <div class="value">${data.approved || 0}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pendentes</h3>
+                        <div class="value">${data.pending || 0}</div>
+                    </div>
+                `;
+
+                // Load by type
+                if (data.by_type) {
+                    for (const [type, count] of Object.entries(data.by_type)) {
+                        document.getElementById('stats').innerHTML += `
+                            <div class="stat-card">
+                                <h3>${type}</h3>
+                                <div class="value">${count}</div>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        async function search() {
+            const query = document.getElementById('searchInput').value;
+            const type = document.getElementById('typeFilter').value;
+
+            if (!query && !type) {
+                alert('Digite uma busca ou selecione um tipo');
+                return;
+            }
+
+            document.getElementById('results').innerHTML = '<div class="loading">Buscando...</div>';
+
+            try {
+                const res = await fetch(`${API_BASE}/clauses/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query: query || type, type, top_k: 20 })
+                });
+
+                const data = await res.json();
+                displayResults(data.results);
+            } catch (error) {
+                document.getElementById('results').innerHTML = '<div class="no-results">Erro na busca</div>';
+            }
+        }
+
+        function displayResults(results) {
+            const container = document.getElementById('results');
+
+            if (!results || results.length === 0) {
+                container.innerHTML = '<div class="no-results">Nenhum resultado encontrado</div>';
+                return;
+            }
+
+            container.innerHTML = results.map(clause => `
+                <div class="clause-card">
+                    <span class="type">${clause.clause_type}</span>
+                    <h3>${clause.title || clause.summary?.substring(0, 100)}</h3>
+                    <p class="summary">${clause.summary}</p>
+                    <div class="meta">
+                        Fonte: ${clause.source_file || 'N/A'} |
+                        Usado ${clause.times_used || 0} vezes
+                        ${clause.relevance_score ? `| Relevância: ${(clause.relevance_score * 100).toFixed(0)}%` : ''}
+                    </div>
+                    ${clause.tags && clause.tags.length ? `
+                        <div class="tags">
+                            ${clause.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                        </div>
+                    ` : ''}
+                    ${clause.approval_status === 'pending' ? `
+                        <div class="approve-buttons">
+                            <button class="approve" onclick="approveClause(${clause.id})">✓ Aprovar</button>
+                            <button class="reject" onclick="rejectClause(${clause.id})">✕ Rejeitar</button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function approveClause(id) {
+            const approvedBy = prompt('Seu nome:');
+            if (!approvedBy) return;
+
+            try {
+                await fetch(`${API_BASE}/clauses/${id}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approved_by: approvedBy })
+                });
+                alert('Cláusula aprovada!');
+                search();
+            } catch (error) {
+                alert('Erro ao aprovar');
+            }
+        }
+
+        async function rejectClause(id) {
+            const reason = prompt('Motivo da rejeição:');
+            if (!reason) return;
+
+            try {
+                await fetch(`${API_BASE}/clauses/${id}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rejected_by: 'Usuario', notes: reason })
+                });
+                alert('Cláusula rejeitada');
+                search();
+            } catch (error) {
+                alert('Erro ao rejeitar');
+            }
+        }
+
+        // Enter key search
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') search();
+        });
+
+        // Load stats on page load
+        loadStats();
+    </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Dependências adicionais para embeddings semânticos locais
+# Instale com: pip install -r requirements-semantic.txt
+
+# sentence-transformers (recomendado - melhor qualidade)
+sentence-transformers>=2.2.0
+
+# Gensim (alternativa - Word2Vec)
+gensim>=4.3.0
+
+# PyTorch (necessário para sentence-transformers)
+torch>=2.0.0
