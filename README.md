@@ -30,7 +30,7 @@ app.py                  ← Servidor Flask + rotas API
 ├── custom_extractor.py  ← Claude AI → JSON de formato livre
 ├── store.py              ← Persistência PostgreSQL + ChromaDB
 └── templates/
-    └── index.html        ← Upload + campo de instrução + resultado
+    └── index.html        ← Interface unificada: Landing + Extrator + Biblioteca
 
 mcp_server.py            ← Servidor MCP/SSE genérico para Open WebUI
 ```
@@ -55,6 +55,20 @@ python app.py
 ```
 
 Acesse: http://localhost:5000
+
+## Interface Web
+
+A aplicação possui uma interface unificada com três seções:
+
+1. **Landing Page** - Apresentação do sistema com visão geral das funcionalidades
+2. **Extrator de PDFs** - Upload de documentos e extração guiada por instruções
+3. **Biblioteca de Cláusulas** - Busca e aprovação de precedentes jurídicos
+
+**Design:**
+- Tipografia elegante com Newsreader (serif) e Inter (sans)
+- Paleta de cores navy/blue profissional
+- Layout responsivo para diferentes dispositivos
+- Navegação por abas integradas
 
 ## Docker (recomendado)
 
