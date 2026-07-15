@@ -653,21 +653,27 @@ class ClauseLibrary:
     # Busca
     # ─────────────────────────────────────────────────────────────────────
 
-    def search_by_type(self, clause_type: str, approved_only: bool = True) -> List[Dict]:
+    def search_by_type(self, clause_type: str, approved_only: bool = False) -> List[Dict]:
         """
         Busca cláusulas por tipo.
 
         Args:
             clause_type: Tipo da cláusula (ex: 'forca_maior', 'multa',
                          'tutela_liminar', 'base_calculo_tributo' etc. —
-                         ver ClauseType/CLAUSE_TYPE_CATALOG)
-            approved_only: Se True, retorna apenas aprovadas
+                         ver ClauseType/CLAUSE_TYPE_CATALOG). Se vazio,
+                         retorna todos os tipos.
+            approved_only: Se True, retorna apenas aprovadas. Padrão=False
+                         para incluir pendentes.
 
         Returns:
             Lista de cláusulas
         """
         with self._Session() as session:
-            query = session.query(ApprovedClause).filter_by(clause_type=clause_type)
+            # Se não tem tipo específico, busca todos (sem filter_by clause_type)
+            if clause_type and clause_type.strip():
+                query = session.query(ApprovedClause).filter_by(clause_type=clause_type)
+            else:
+                query = session.query(ApprovedClause)
 
             if approved_only:
                 query = query.filter_by(approval_status=ApprovalStatus.APPROVED.value)
@@ -680,6 +686,24 @@ class ClauseLibrary:
                 clause.last_used_at = datetime.utcnow()
 
             session.commit()
+
+            return [clause.to_dict() for clause in results]
+
+    def get_recent_clauses(self, limit: int = 5) -> List[Dict]:
+        """
+        Retorna as cláusulas mais recentemente extraídas.
+
+        Args:
+            limit: Quantidade de cláusulas a retornar (padrão: 5)
+
+        Returns:
+            Lista de cláusulas ordenadas por data de criação decrescente
+        """
+        with self._Session() as session:
+            results = session.query(ApprovedClause)\
+                .order_by(ApprovedClause.created_at.desc())\
+                .limit(limit)\
+                .all()
 
             return [clause.to_dict() for clause in results]
 
@@ -985,15 +1009,27 @@ def setup_clause_routes(app):
         from flask import request
 
         clause_type = request.args.get("type")
-        approved_only = request.args.get("approved", "true").lower() == "true"
+        # Padrão mudou para false - mostra pendentes + aprovadas
+        approved_only = request.args.get("approved", "false").lower() == "true"
 
         library = ClauseLibrary()
 
         if clause_type:
             results = library.search_by_type(clause_type, approved_only)
         else:
-            # Lista todas aprovadas
+            # Lista todas (pendentes + aprovadas)
             results = library.search_by_type("", approved_only)
+
+        return {"results": results, "total": len(results)}
+
+    @app.route("/api/clauses/recent", methods=["GET"])
+    def list_recent_clauses():
+        """Lista as cláusulas mais recentes (para carregar ao abrir a tela)."""
+        from flask import request
+
+        limit = int(request.args.get("limit", 5))
+        library = ClauseLibrary()
+        results = library.get_recent_clauses(limit=limit)
 
         return {"results": results, "total": len(results)}
 

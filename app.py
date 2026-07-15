@@ -21,7 +21,7 @@ from store import Store
 from vectorizer import Vectorizer
 
 from mcp_server import app as mcp_asgi_app
-from clause_library import setup_clause_routes, build_instruction_for_type
+from clause_library import setup_clause_routes, build_instruction_for_type, ClauseLibrary
 
 # ─────────────────────────────────────────────────────────────
 # Logging com cores e separadores visuais
@@ -245,6 +245,19 @@ def upload():
             instrucao=instrucao, items=items,
         )
         logger.info(f"{GREEN}✔ Job {job_id} salvo com sucesso{RESET}")
+
+        # Adiciona itens à Biblioteca de Cláusulas como pendentes
+        library = ClauseLibrary()
+        items_dict = [item.to_dict() for item in items]
+        added = library.add_from_extraction(
+            job_id=job_id,
+            doc_hash=doc_hash,
+            source_file=f.filename,
+            items=items_dict,
+            auto_approve=False,  # Itens novos começam como pendentes
+            clause_type=clause_type,
+        )
+        logger.info(f"{GREEN}✔ {added} cláusula(s) adicionada(s) à biblioteca (pendente){RESET}")
 
         sep("EXTRAÇÃO CONCLUÍDA ✔", "▶")
 

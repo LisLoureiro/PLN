@@ -234,7 +234,7 @@ class Store:
         embedder = create_semantic_embedding(method=method)
 
         # Embeddings dos resumos
-        summaries = [item["resumo"] for item in all_items]
+        summaries = [item.get("resumo", "") for item in all_items]
         embeddings = np.array(embedder.embed(summaries))
 
         # Embedding da query

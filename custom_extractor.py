@@ -31,18 +31,22 @@ class ExtractedItem:
     """
     Representa um item extraído do documento conforme a instrução do usuário.
 
-    Diferente do CPR-F (categorias e campos fixos), aqui o item é um objeto
-    JSON de formato livre — os campos dependem do que o usuário pediu.
-    Dois campos são sempre garantidos para permitir listagem/busca genérica:
-      - resumo:            frase curta e autoexplicativa do item
-      - trecho_referencia: cláusula/seção/trecho do documento que embasa o item
-    Qualquer outro campo pedido pelo usuário fica em `dados`.
+    O schema é livre — os campos dependem do que o usuário pediu.
+    Extrai automaticamente:
+      - trecho_referencia: cláusula/seção/trecho do documento (se existir no JSON)
+      - resumo:            gerado automaticamente concatenando valores disponíveis
+      - dados:             todos os campos do JSON original (nenhum dado é perdido)
     """
 
-    def __init__(self, resumo: str, trecho_referencia: str, dados: Dict[str, Any]):
-        self.resumo = resumo
+    def __init__(self, trecho_referencia: str, dados: Dict[str, Any]):
         self.trecho_referencia = trecho_referencia
         self.dados = dados
+        # Gera resumo automaticamente concatenando valores de texto não vazios
+        valores_texto = []
+        for v in dados.values():
+            if isinstance(v, str) and v.strip():
+                valores_texto.append(v.strip())
+        self.resumo = " | ".join(valores_texto)[:200] if valores_texto else "Item extraído"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -143,22 +147,62 @@ class CustomExtractor:
         logger.info("[DEBUG] INICIANDO PARSING DA RESPOSTA")
         logger.info("[DEBUG] RESPOSTA BRUTA (limpa, primeiros 500 chars): %s", clean[:500])
 
-        # Remove markdown code blocks se presentes
-        if clean.startswith("```"):
-            logger.info("[DEBUG] Detectado markdown code block, removendo...")
-            # Remove o ```json inicial
-            clean = re.sub(r"^```[a-z]*\n?", "", clean)
-            # Remove tudo após o ``` final (incluindo explicações extras)
-            clean = re.sub(r"\n```.*$", "", clean, flags=re.DOTALL)
-            clean = clean.strip()
-            logger.info("[DEBUG] Após remoção markdown: %s", clean[:500])
+        # ── PASSO 1: Tenta extrair bloco JSON de markdown fence (```json ... ``` ou ``` ... ```)
+        # O bloco pode estar em qualquer lugar da resposta (não só no início)
+        json_block_match = re.search(r'```(?:json)?\s*\n(.*?)```', clean, re.DOTALL | re.IGNORECASE)
+        if json_block_match:
+            clean = json_block_match.group(1).strip()
+            logger.info("[DEBUG] Bloco JSON extraído de markdown fence (%d chars)", len(clean))
+        else:
+            logger.info("[DEBUG] Nenhum markdown fence detectado, tentando extração por brackets...")
 
-        logger.info("[DEBUG] Tentando fazer parse JSON...")
+            # ── PASSO 2: Se não tem fence, tenta extrair do primeiro '[' até o último ']'
+            # (busca o primeiro '[' e então encontra o ']' correspondente)
+            bracket_start = clean.find('[')
+            if bracket_start == -1:
+                # Tenta com '{' para objetos JSON
+                brace_start = clean.find('{')
+                if brace_start != -1:
+                    # Encontra o '}' correspondente (contando abre/fecha)
+                    depth = 0
+                    for i, char in enumerate(clean[brace_start:], start=brace_start):
+                        if char == '{':
+                            depth += 1
+                        elif char == '}':
+                            depth -= 1
+                            if depth == 0:
+                                clean = clean[brace_start:i+1]
+                                logger.info("[DEBUG] Objeto JSON extraído por brackets (%d chars)", len(clean))
+                                break
+                    else:
+                        logger.warning("[DEBUG] Não conseguiu encontrar '}' correspondente")
+                else:
+                    logger.warning("[DEBUG] Nenhum '[' ou '{' encontrado na resposta")
+            else:
+                # Encontra o ']' correspondente
+                depth = 0
+                for i, char in enumerate(clean[bracket_start:], start=bracket_start):
+                    if char == '[':
+                        depth += 1
+                    elif char == ']':
+                        depth -= 1
+                        if depth == 0:
+                            clean = clean[bracket_start:i+1]
+                            logger.info("[DEBUG] Array JSON extraído por brackets (%d chars)", len(clean))
+                            break
+                else:
+                    logger.warning("[DEBUG] Não conseguiu encontrar ']' correspondente")
+
+        # ── PASSO 3: Tenta fazer parse do JSON extraído
+        logger.info("[DEBUG] Conteúdo a ser parseado (primeiros 200 chars): %s", clean[:200])
         try:
             data = json.loads(clean)
             logger.info("[DEBUG] JSON parseado com sucesso! Tipo: %s", type(data).__name__)
         except json.JSONDecodeError as e:
-            logger.error("[Extractor] JSON inválido: %s\nConteúdo: %s", e, raw[:500])
+            logger.error("[Extractor] FALHA DE PARSING JSON: %s", e)
+            logger.error("[Extractor] RESPOSTA BRUTA COMPLETA PARA DEBUG: %s", raw)
+            logger.error("[Extractor] CONTEÚDO EXTRAÍDO PARA PARSING: %s", clean)
+            logger.error("[Extractor] ⚠️ Isto é uma FALHA DE PARSING, não 'nenhum item encontrado'")
             return []
 
         # Se for um dict, tenta extrair a lista de uma propriedade comum
@@ -215,15 +259,26 @@ class CustomExtractor:
                 if not isinstance(item, dict):
                     logger.warning("[Extractor] Item %d não é objeto, ignorado. Tipo: %s", i, type(item))
                     continue
-                resumo = str(item.get("resumo", "")).strip()
-                if not resumo:
-                    logger.warning("[Extractor] Item %d sem resumo, ignorado. Conteúdo: %s", i, item)
+
+                # Extrai trecho_referencia se existir (campo especial)
+                trecho = str(item.pop("trecho_referencia", "não identificado")).strip()
+
+                # Verifica se tem pelo menos um campo de texto não vazio
+                tem_conteudo = False
+                for v in item.values():
+                    if isinstance(v, str) and v.strip():
+                        tem_conteudo = True
+                        break
+                    elif isinstance(v, (int, float, bool)):
+                        tem_conteudo = True
+                        break
+
+                if not tem_conteudo:
+                    logger.warning("[Extractor] Item %d sem conteúdo útil, ignorado. Conteúdo: %s", i, item)
                     continue
-                trecho = str(item.get("trecho_referencia", "não identificado")).strip()
-                dados = item.get("dados", {})
-                if not isinstance(dados, dict):
-                    dados = {"valor": dados}
-                extracted_item = ExtractedItem(resumo=resumo, trecho_referencia=trecho, dados=dados)
+
+                # Todos os outros campos vão para 'dados' (schema livre)
+                extracted_item = ExtractedItem(trecho_referencia=trecho, dados=item)
                 items.append(extracted_item)
                 logger.info("[DEBUG] Item %d parseado com sucesso: %s", i, extracted_item)
             except Exception as e:

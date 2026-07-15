@@ -229,6 +229,14 @@
   .approve-buttons .approve{ background: var(--ok); color:#fff; }
   .approve-buttons .reject{ background: var(--err); color:#fff; }
 
+  .clause-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .status-badge{
+    padding:4px 10px; border-radius:100px; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;
+  }
+  .status-badge.pending{ background:#FFF3CD; color:#856404; }
+  .status-badge.approved{ background:#D4EDDA; color:#155724; }
+  .trecho{ color: var(--ink); line-height:1.5; margin:8px 0; font-size:13px; }
+
   footer{
     max-width:1040px; margin:0 auto; padding:16px clamp(20px,4vw,48px) 40px;
     color: var(--ink-faint); font-size:11px; font-family: var(--mono);
@@ -353,7 +361,7 @@
       <div class="stats" id="stats"></div>
 
       <label for="searchInput">Buscar precedentes</label>
-      <input type="text" id="searchInput" placeholder="Ex: como já redigimos cláusula de força maior para contratos de SaaS">
+      <input type="text" id="searchInput" placeholder="Ex: cláusulas sobre prescrição, honorários, contribuições parafiscais...">
 
       <div class="search-row">
         <div>
@@ -563,21 +571,26 @@
     const query = document.getElementById('searchInput').value;
     const type = document.getElementById('typeFilter').value;
 
-    if (!query && !type) {
-      alert('Digite uma busca ou selecione um tipo');
-      return;
-    }
-
     document.getElementById('results').innerHTML = '<div class="loading">buscando…</div>';
 
     try {
-      const res = await fetch(`${API_BASE}/clauses/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query || type, type, top_k: 20 })
-      });
+      let res;
+      let data;
 
-      const data = await res.json();
+      if (!query && !type) {
+        // Se não tem busca, carrega as mais recentes
+        res = await fetch(`${API_BASE}/clauses/recent?limit=5`);
+        data = await res.json();
+      } else {
+        // Busca por TF-IDF
+        res = await fetch(`${API_BASE}/clauses/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query || type, type, top_k: 20 })
+        });
+        data = await res.json();
+      }
+
       displayResults(data.results);
     } catch (error) {
       document.getElementById('results').innerHTML = '<div class="no-results">erro na busca</div>';
@@ -592,29 +605,40 @@
       return;
     }
 
-    container.innerHTML = results.map(clause => `
-      <div class="clause-card">
-        <span class="type">${clause.clause_type}</span>
-        <h3>${clause.title || clause.summary?.substring(0, 100)}</h3>
-        <p class="summary">${clause.summary}</p>
-        <div class="meta">
-          fonte: ${clause.source_file || 'N/A'} ·
-          usado ${clause.times_used || 0}x
-          ${clause.relevance_score ? ` · relevância ${(clause.relevance_score * 100).toFixed(0)}%` : ''}
+    container.innerHTML = results.map(clause => {
+      // Trunca trecho de referência em ~150 caracteres
+      const trecho = clause.original_text || clause.summary || '';
+      const trechoTruncado = trecho.length > 150 ? trecho.substring(0, 150) + '...' : trecho;
+
+      // Formata data de criação
+      const dataCriacao = clause.created_at ? new Date(clause.created_at).toLocaleDateString('pt-BR') : 'N/A';
+
+      // Status badge
+      const statusBadge = clause.approval_status === 'pending'
+        ? '<span class="status-badge pending">Pendente</span>'
+        : '<span class="status-badge approved">Aprovada</span>';
+
+      return `
+        <div class="clause-card">
+          <div class="clause-header">
+            <span class="type">${clause.clause_type_label || clause.clause_type || 'Tipo não identificado'}</span>
+            ${statusBadge}
+          </div>
+          <p class="trecho">${trechoTruncado}</p>
+          <div class="meta">
+            fonte: ${clause.source_file || 'N/A'} ·
+            extraído em: ${dataCriacao}
+            ${clause.times_used > 0 ? `· usado ${clause.times_used}x` : ''}
+          </div>
+          ${clause.approval_status === 'pending' ? `
+            <div class="approve-buttons">
+              <button class="approve" onclick="approveClause(${clause.id})">✓ Aprovar</button>
+              <button class="reject" onclick="rejectClause(${clause.id})">✕ Rejeitar</button>
+            </div>
+          ` : ''}
         </div>
-        ${clause.tags && clause.tags.length ? `
-          <div class="tags">
-            ${clause.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
-          </div>
-        ` : ''}
-        ${clause.approval_status === 'pending' ? `
-          <div class="approve-buttons">
-            <button class="approve" onclick="approveClause(${clause.id})">✓ aprovar</button>
-            <button class="reject" onclick="rejectClause(${clause.id})">✕ rejeitar</button>
-          </div>
-        ` : ''}
-      </div>
-    `).join('');
+      `;
+    }).join('');
   }
 
   async function approveClause(id) {
@@ -655,7 +679,9 @@
     if (e.key === 'Enter') search();
   });
 
+  // Carrega contadores e cláusulas recentes ao iniciar
   loadStats();
+  search();
 </script>
 </body>
 </html>
