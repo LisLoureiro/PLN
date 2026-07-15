@@ -142,7 +142,7 @@
     width:100%; background: var(--page); border:1px solid var(--border); border-radius: var(--r-sm);
     color: var(--ink); padding:11px 13px; font-size:13.5px; font-family: var(--sans);
   }
-  #pane-extrator textarea{
+  #pane-extrator select{
     width:100%; background: var(--page); border:1px solid var(--border); border-radius: var(--r-sm);
     color: var(--ink); padding:13px; font-size:14px; font-family: var(--sans);
     min-height:94px; resize:vertical; line-height:1.5;
@@ -307,10 +307,23 @@
         </div>
 
         <div class="field">
-          <label for="instrucao">O que você quer extrair?</label>
-          <textarea id="instrucao" name="instrucao" required
-            placeholder="Ex: extraia todas as cláusulas de reajuste do aluguel, com o índice usado, a periodicidade e o percentual aplicado."></textarea>
-          <div class="hint">Quanto mais específica a instrução, mais preciso o resultado — ela define o formato dos itens extraídos.</div>
+          <label for="clauseType">Tipo de cláusula (opcional)</label>
+          <select id="clauseType" name="clause_type">
+            <option value="">Selecione um tipo predefinido...</option>
+          </select>
+          <div class="hint">Escolha um tipo para usar uma instrução predefinida otimizada, ou deixe em branco para digitar livremente.</div>
+        </div>
+
+        <div class="field" id="instrucaoField">
+          <label for="instrucao">Instrução detalhada</label>
+          <textarea id="instrucao" name="instrucao"
+            placeholder="Se não selecionou um tipo acima, descreva o que deve ser extraído do documento (mínimo 8 caracteres)."></textarea>
+          <div class="hint" id="instrucaoHint">Quanto mais específica a instrução, mais preciso o resultado — ela define o formato dos itens extraídos.</div>
+        </div>
+
+        <div class="field" id="instructionPreview" style="display:none; margin-top:12px; padding:12px; background:#F8F9FA; border-radius:4px; border:1px solid #E2E5EA;">
+          <div style="font-size:11px; color:#57607A; margin-bottom:6px; font-family:var(--mono); text-transform:uppercase; letter-spacing:0.06em;">Instrução que será usada:</div>
+          <div id="previewText" style="font-size:13px; line-height:1.6; color:#16213D;"></div>
         </div>
 
         <button type="submit" class="primary" id="btn">Extrair</button>
@@ -380,6 +393,66 @@
 
   const API_BASE = '/api';
 
+  // Carregar tipos de cláusulas para o dropdown
+  async function loadClauseTypes() {
+    try {
+      const res = await fetch('/api/clause-types');
+      const data = await res.json();
+      const select = document.getElementById('clauseType');
+
+      // Limpa opções (mantém apenas a primeira)
+      select.innerHTML = '<option value="">Selecione um tipo predefinido...</option>';
+
+      // Adiciona cada tipo
+      data.results.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.value;
+        option.textContent = type.label;
+        select.appendChild(option);
+      });
+    } catch (error) {
+      console.error('Erro ao carregar tipos:', error);
+    }
+  }
+
+  // Evento ao selecionar um tipo de cláusula
+  document.getElementById('clauseType').addEventListener('change', async (e) => {
+    const clauseType = e.target.value;
+    const instrucaoField = document.getElementById('instrucao');
+    const instrucaoHint = document.getElementById('instrucaoHint');
+    const previewDiv = document.getElementById('instructionPreview');
+    const previewText = document.getElementById('previewText');
+
+    if (clauseType) {
+      // Busca a instrução completa para o tipo selecionado
+      try {
+        const res = await fetch(`/api/clause-types/${clauseType}/instruction`);
+        const data = await res.json();
+
+        // Mostra a instrução preview
+        previewText.textContent = data.instruction;
+        previewDiv.style.display = 'block';
+
+        // Torna o campo de texto opcional
+        instrucaoField.removeAttribute('required');
+        instrucaoField.placeholder = "Observação adicional opcional (ex: foco apenas em X, ignore Y)...";
+        instrucaoHint.textContent = "Digite uma observação adicional para refinar a busca, ou deixe em branco.";
+      } catch (error) {
+        console.error('Erro ao carregar instrução:', error);
+        previewDiv.style.display = 'none';
+      }
+    } else {
+      // Nenhum tipo selecionado - volta ao comportamento padrão
+      previewDiv.style.display = 'none';
+      instrucaoField.setAttribute('required', 'required');
+      instrucaoField.placeholder = "Ex: extraia todas as cláusulas de reajuste do aluguel, com o índice usado, a periodicidade e o percentual aplicado.";
+      instrucaoHint.textContent = "Quanto mais específica a instrução, mais preciso o resultado — ela define o formato dos itens extraídos.";
+    }
+  });
+
+  // Carrega tipos ao iniciar a página
+  loadClauseTypes();
+
   const form = document.getElementById('form');
   const btn = document.getElementById('btn');
   const statusEl = document.getElementById('status');
@@ -414,6 +487,7 @@
 
     const fd = new FormData();
     fd.append('file', document.getElementById('file').files[0]);
+    fd.append('clause_type', document.getElementById('clauseType').value);
     fd.append('instrucao', document.getElementById('instrucao').value);
 
     try{

@@ -15,4 +15,4 @@ RUN mkdir -p uploads templates
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--preload", "-w", "2", "-b", "0.0.0.0:5000", "--timeout", "300", "app:app"]
+CMD ["gunicorn", "--preload", "-w", "2", "-b", "0.0.0.0:5000", "--timeout", "900", "app:app"]
