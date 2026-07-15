@@ -19,6 +19,18 @@ services:
     networks:
       - extractor_net
 
+  # ─── Ollama — modelos locais para extração ───────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: extractor_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - extractor_net
+
   # ─── Aplicação Flask ──────────────────────────────────────────────────────
   app:
     build:
@@ -29,8 +41,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_started
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OLLAMA_BASE_URL: http://ollama:11434
       DATABASE_URL: postgresql://${POSTGRES_USER:-extractor}:${POSTGRES_PASSWORD:-extractor123}@db:5432/${POSTGRES_DB:-extractor}
     volumes:
       - uploads_tmp:/app/uploads
@@ -55,9 +69,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-extractor}:${POSTGRES_PASSWORD:-extractor123}@db:5432/${POSTGRES_DB:-extractor}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OLLAMA_BASE_URL: http://ollama:11434
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8000
     ports:
@@ -156,6 +172,8 @@ volumes:
   pgadmin_data:
     driver: local
   openwebui_data:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:

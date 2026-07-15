@@ -21,7 +21,7 @@ from store import Store
 from vectorizer import Vectorizer
 
 from mcp_server import app as mcp_asgi_app
-from clause_library import setup_clause_routes
+from clause_library import setup_clause_routes, build_instruction_for_type
 
 # ─────────────────────────────────────────────────────────────
 # Logging com cores e separadores visuais
@@ -143,11 +143,24 @@ def upload():
     if not f.filename.lower().endswith(".pdf"):
         return jsonify({"error": "Apenas arquivos PDF são aceitos."}), 400
 
+    # O usuário pode digitar uma instrução livre (campo 'instrucao') OU
+    # escolher um tipo pré-definido no seletor do prompt (campo
+    # 'clause_type', valores em GET /api/clause-types). Se ambos vierem,
+    # 'clause_type' vira a instrução-base e 'instrucao' complementa como
+    # observação adicional.
     instrucao = (request.form.get("instrucao") or "").strip()
-    if len(instrucao) < MIN_INSTRUCAO_CHARS:
+    clause_type = (request.form.get("clause_type") or "").strip()
+
+    if clause_type:
+        try:
+            instrucao = build_instruction_for_type(clause_type, extra=instrucao or None)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+    elif len(instrucao) < MIN_INSTRUCAO_CHARS:
         return jsonify({"error": (
-            "Descreva o que deve ser extraído do documento (campo 'instrucao'). "
-            f"Mínimo de {MIN_INSTRUCAO_CHARS} caracteres."
+            "Descreva o que deve ser extraído do documento (campo 'instrucao'), "
+            "ou selecione um tipo de cláusula (campo 'clause_type'). "
+            f"Mínimo de {MIN_INSTRUCAO_CHARS} caracteres para 'instrucao'."
         )}), 400
 
     job_id = str(uuid.uuid4())[:8].upper()
@@ -188,6 +201,10 @@ def upload():
             markdown = normalizer.to_markdown()
             del normalizer
             logger.info(f"{GREEN}✔ {len(markdown):,} chars de Markdown gerado{RESET}")
+            logger.info(f"[DEBUG] Amostra do Markdown (primeiros 500 chars): {markdown[:500]}...")
+            logger.info(f"[DEBUG] Contém 'CLÁUSULA': {'SIM' if 'CLÁUSULA' in markdown.upper() or 'CLAUSULA' in markdown.upper() else 'NÃO'}")
+            logger.info(f"[DEBUG] Contém 'ENDEREÇO': {'SIM' if 'ENDEREÇO' in markdown.upper() or 'ENDERECO' in markdown.upper() or 'ENDEREÇAMENTO' in markdown.upper() else 'NÃO'}")
+            logger.info(f"[DEBUG] Contém 'AVENIDA' ou 'RUA': {'SIM' if 'AVENIDA' in markdown.upper() or 'RUA' in markdown.upper() else 'NÃO'}")
 
             if len(markdown) < 200:
                 return jsonify({"error": (
@@ -202,20 +219,23 @@ def upload():
         sep("Etapa 4 — Chunking do Markdown")
         chunks = _chunk_markdown(markdown)
         logger.info(f"{GREEN}✔ {len(chunks)} chunks gerados{RESET}")
+        logger.info(f"[DEBUG] Exemplo de chunk (primeiros 200 chars): {chunks[0][:200] if chunks else 'SEM CHUNKS'}...")
 
         sep("Etapa 5 — Vetorização TF-IDF guiada pela instrução")
         vec = Vectorizer()
         vec.index_chunks(chunks)
         relevant = vec.search(instrucao)
         logger.info(f"{GREEN}✔ {len(relevant)} trechos relevantes para a instrução{RESET}")
+        logger.info(f"[DEBUG] Exemplo de trecho relevante (primeiros 300 chars): {relevant[0][:300] if relevant else 'SEM TRECHOS RELEVANTES'}...")
 
-        sep("Etapa 6 — Claude AI (extração conforme instrução do usuário)")
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            return jsonify({"error": "ANTHROPIC_API_KEY não configurada no servidor."}), 500
-
-        logger.info(f"🤖 Enviando {len(relevant)} trechos para o Claude…")
-        extractor = CustomExtractor(api_key=api_key)
+        sep("Etapa 6 — Ollama (extração conforme instrução do usuário)")
+        ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        logger.info(f"🤖 Enviando {len(relevant)} trechos para o Ollama ({ollama_url})…")
+        logger.info(f"[DEBUG] Total de caracteres enviados: {sum(len(t) for t in relevant):,}")
+        logger.info(f"[DEBUG] CONTEÚDO COMPLETO DOS TRECHOS RELEVANTES:")
+        for i, trecho in enumerate(relevant):
+            logger.info(f"[DEBUG] TRECHO #{i+1}/{len(relevant)} ({len(trecho)} chars): {trecho}")
+        extractor = CustomExtractor(base_url=ollama_url)
         items = extractor.extract(relevant, instrucao)
         logger.info(f"{GREEN}✔ {len(items)} itens extraídos{RESET}")
 
@@ -231,6 +251,7 @@ def upload():
         return jsonify({
             "job_id": job_id,
             "instrucao": instrucao,
+            "clause_type": clause_type or None,
             "items": [i.to_dict() for i in items],
             "total": len(items),
             "from_cache": from_cache,

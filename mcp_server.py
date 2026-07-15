@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Optional
 
+import requests
 import psycopg2
 import psycopg2.extras
 import uvicorn
@@ -323,9 +324,6 @@ def tool_pesquisar_no_documento(args: dict) -> str:
 
 
 def tool_perguntar_ao_documento(args: dict) -> str:
-    import urllib.request
-    import json as _json
-
     pergunta = (args.get("pergunta") or "").strip()
     job_id = (args.get("job_id") or "").strip()
     top_k = min(int(args.get("top_k", 12)), 20)
@@ -336,9 +334,8 @@ def tool_perguntar_ao_documento(args: dict) -> str:
     if not job_id:
         return "❌ Parâmetro `job_id` é obrigatório."
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        return "❌ ANTHROPIC_API_KEY não configurada no servidor MCP."
+    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434") + "/api/chat"
+    model = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct")
 
     doc = _get_document_for_job(job_id)
     if not doc:
@@ -369,34 +366,30 @@ def tool_perguntar_ao_documento(args: dict) -> str:
     )
     user_msg = f"PERGUNTA: {pergunta}\n\nCONTEXTO ({len(context):,} chars):\n\n{context}"
 
-    payload = _json.dumps({
-        "model": "claude-opus-4-5-20251101",
-        "max_tokens": 2000,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_msg}],
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST",
-    )
+    prompt = f"{system_prompt}\n\n{user_msg}"
 
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp:
-            result = _json.loads(resp.read())
-        answer = result["content"][0]["text"]
+        response = requests.post(
+            ollama_url,
+            json={
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+                "options": {
+                    "num_predict": 2000
+                }
+            },
+            timeout=180
+        )
+        response.raise_for_status()
+        result = response.json()
+        answer = result["message"]["content"]
     except Exception as exc:
-        logger.exception("Erro ao chamar Claude no MCP")
-        return f"❌ Erro ao consultar Claude: {exc}"
+        logger.exception("Erro ao chamar Ollama no MCP")
+        return f"❌ Erro ao consultar Ollama: {exc}"
 
     return "\n".join([
-        "## 🤖 Resposta — Claude analisa o documento",
+        "## 🤖 Resposta — Ollama analisa o documento",
         f"> **Pergunta:** _{pergunta}_",
         f"_{modo_badge} | job `{job_id}` | arquivo: {src}_",
         "",
