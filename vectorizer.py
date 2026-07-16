@@ -50,13 +50,28 @@ class Vectorizer:
             sublinear_tf=True,
         )
         self._matrix = None
+        self._cached_chunks_hash = None  # Cache para evitar reindexação em full-scan
 
     def index_chunks(self, chunks: List[str]) -> None:
+        """
+        Indexa chunks com TF-IDF. Se os mesmos chunks forem indexados novamente
+        (ex.: em full-scan com múltiplos tipos), reusa a matriz cacheada.
+        """
         if not chunks:
             raise ValueError("Lista de chunks vazia.")
+
+        # Calcula hash dos chunks para detectar reutilização
+        chunks_hash = hash(tuple(chunks))
+
+        if chunks_hash == self._cached_chunks_hash and self._matrix is not None:
+            logger.info("[Vectorizer] Reusando matriz TF-IDF cacheada (%d chunks).", len(chunks))
+            self._chunks = chunks  # Atualiza referência, mas mantém matriz
+            return
+
         self._chunks = chunks
         self._matrix = self._vectorizer.fit_transform(chunks)
-        logger.info("[Vectorizer] %d chunks indexados.", len(chunks))
+        self._cached_chunks_hash = chunks_hash
+        logger.info("[Vectorizer] %d chunks indexados (matriz nova).", len(chunks))
 
     def search(self, query: str) -> List[str]:
         """
@@ -133,6 +148,31 @@ class Vectorizer:
             "isencao": "isenção imposto renda doença grave moléstia lei 7.713 art. 6",
             "contraditório": "contraditório ampla defesa devido processo legal perícia laudo médico",
             "contraditorio": "contraditório ampla defesa devido processo legal perícia laudo médico",
+            # ── Termos de Direito Civil material (Grupo 3) ──
+            "dano moral": "abalo moral sofrimento psíquico dor ofensa honra imagem reputação vergonha humilhação art. 186 cc art. 5º v x cf",
+            "dano_estético": "dano estético deformidade alteração aparência física defeito estético",
+            "dano material": "dano material prejuízo econômico patrimonial lucros cessantes dano emergente",
+            "lucros cessantes": "lucros cessantes rendimento perdido ganho que deixou de obter",
+            "nexo causal": "nexo de causalidade link relação causa-efeito dano evento nexo",
+            "nexo": "nexo causal causalidade relação causa efeito dano",
+            "culpa": "culpa negligência imprudência imperícia dolo responsabilidade civil",
+            "enriquecimento sem causa": "enriquecimento ilícito indevido pagamento indevido benefício sem causa art. 884 cc",
+            "enriquecimento ilícito": "enriquecimento sem causa indevido pagamento ilícito art. 884 cc",
+            "prescrição civil": "prazo extintivo perda direito ação decurso tempo prazo legal art. 205 cc",
+            "decadência": "prazo decadencial perda direito prazo legal cc",
+            "cláusula penal": "cláusula penal multa compensatória mora descumprimento obrigação",
+            "multa": "multa pena sanção cláusula penal compensatória",
+            "vício redibitório": "vício redibitório defeito oculto coisa viciada evicção art. 441 cc",
+            "evicção": "evicção perda coisa terceiro direito posse",
+            "obrigação de fazer": "obrigação de fazer não fazer dar coisa certa execução específica",
+            "obrigação": "obrigação contratual legal dever jurídico prestação",
+            "posse": "posse propriedade domínio usucapião arts. 1196 cc",
+            "propriedade": "propriedade domínio direito real coisa art. 1228 cc",
+            "usucapião": "usucapião prescrição aquisitiva posse mansa pacífica",
+            "alimentos": "alimentos pensão alimentícia obrigação alimentar covenantor art. 1694 cc",
+            "pensão": "pensão alimentícia alimentos obrigação de pagar",
+            "herança": "herança sucessão testamento inventário partilha art. 1784 cc",
+            "sucessão": "sucessão herdeiros legítimos testamentários partilha inventário",
         }
         for termo, relacionados in expansions.items():
             if termo in query_lower:

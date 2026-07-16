@@ -112,6 +112,10 @@ class FullScanEngine:
 
             self.vectorizer.index_chunks(chunks)
 
+            # Batch updates: atualiza progresso a cada N tipos para reduzir writes
+            BATCH_SIZE = 5
+            last_update = 0
+
             # Processa cada tipo
             for i, clause_type in enumerate(clause_types, 1):
                 try:
@@ -140,13 +144,17 @@ class FullScanEngine:
                     results[clause_type] = tagged_items
                     logger.info("[FullScan] Scan %s: %s → %d itens", scan_id, clause_type, len(tagged_items))
 
-                    # Atualiza progresso
-                    self.store.update_full_scan_progress(scan_id, i, results)
+                    # Atualiza progresso em batch (a cada BATCH_SIZE tipos)
+                    if i - last_update >= BATCH_SIZE or i == total:
+                        self.store.update_full_scan_progress(scan_id, i, results)
+                        last_update = i
 
                 except Exception as e:
                     logger.exception("[FullScan] Erro no tipo %s: %s", clause_type, e)
                     results[clause_type] = [{"error": str(e)}]
+                    # Atualiza imediatamente em caso de erro
                     self.store.update_full_scan_progress(scan_id, i, results)
+                    last_update = i
 
             # Scan completado com sucesso
             self.store.complete_full_scan(scan_id, results)
