@@ -48,6 +48,24 @@ class ExtractionJobModel(Base):
     created_at  = Column(DateTime, default=datetime.utcnow)
     total       = Column(Integer, default=0)
     items_json  = Column(Text, default="[]")
+    scan_id     = Column(String(64), nullable=True, index=True)  # Link para FullScanModel
+
+
+class FullScanModel(Base):
+    """Varredura completa: um documento scanneado contra múltiplos tipos de cláusula."""
+    __tablename__ = "full_scans"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    scan_id         = Column(String(64), unique=True, nullable=False, index=True)
+    doc_hash        = Column(String(64), nullable=False, index=True)
+    status          = Column(String(20), nullable=False, default="running")  # running, completed, error
+    total_types     = Column(Integer, nullable=False)
+    processed_types = Column(Integer, default=0)
+    results_json    = Column(Text, default="{}")  # Resultados consolidados por tipo
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    completed_at    = Column(DateTime, nullable=True)
+    error_message   = Column(Text, nullable=True)
+    clause_types    = Column(Text, default="[]")  # Lista de tipos incluídos no scan
     
 class Store:
     """Camada de persistência: PostgreSQL (documentos e jobs de extração)."""
@@ -300,3 +318,112 @@ class Store:
         logger.info("[Store] TF-IDF search: %d resultados para query '%s'", len(results), query[:50])
 
         return results
+
+    # ──────────────────────────────────────────────
+    # Full Scan CRUD
+    # ──────────────────────────────────────────────
+
+    def create_full_scan(
+        self,
+        scan_id: str,
+        doc_hash: str,
+        clause_types: List[str],
+        total_types: int,
+    ) -> None:
+        """Cria um novo registro de full scan com status 'running'."""
+        with self._Session() as session:
+            existing = session.query(FullScanModel).filter_by(scan_id=scan_id).first()
+            if existing:
+                logger.warning("[Store] Full scan %s já existe, atualizando status para running.", scan_id)
+                existing.status = "running"
+                existing.processed_types = 0
+                existing.results_json = "{}"
+                existing.error_message = None
+                existing.completed_at = None
+            else:
+                session.add(FullScanModel(
+                    scan_id=scan_id,
+                    doc_hash=doc_hash,
+                    clause_types=json.dumps(clause_types, ensure_ascii=False),
+                    total_types=total_types,
+                    processed_types=0,
+                    status="running",
+                ))
+                logger.info("[Store] Full scan %s criado (%d tipos).", scan_id, total_types)
+            session.commit()
+
+    def update_full_scan_progress(
+        self,
+        scan_id: str,
+        processed_types: int,
+        results: Dict[str, List[Dict]],
+    ) -> None:
+        """Atualiza progresso e resultados parciais do scan."""
+        with self._Session() as session:
+            scan = session.query(FullScanModel).filter_by(scan_id=scan_id).first()
+            if not scan:
+                logger.warning("[Store] Full scan %s não encontrado para atualizar progresso.", scan_id)
+                return
+            scan.processed_types = processed_types
+            scan.results_json = json.dumps(results, ensure_ascii=False)
+            session.commit()
+
+    def complete_full_scan(
+        self,
+        scan_id: str,
+        final_results: Dict[str, List[Dict]],
+        error: Optional[str] = None,
+    ) -> None:
+        """Marca scan como completado (ou com erro)."""
+        with self._Session() as session:
+            scan = session.query(FullScanModel).filter_by(scan_id=scan_id).first()
+            if not scan:
+                logger.warning("[Store] Full scan %s não encontrado para completar.", scan_id)
+                return
+            if error:
+                scan.status = "error"
+                scan.error_message = error
+                logger.error("[Store] Full scan %s terminou com erro: %s", scan_id, error)
+            else:
+                scan.status = "completed"
+                scan.processed_types = scan.total_types
+                logger.info("[Store] Full scan %s completado com sucesso (%d tipos).", scan_id, scan.total_types)
+            scan.results_json = json.dumps(final_results, ensure_ascii=False)
+            scan.completed_at = datetime.utcnow()
+            session.commit()
+
+    def get_full_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
+        """Retorna dados completos de um full scan."""
+        with self._Session() as session:
+            row = session.query(FullScanModel).filter_by(scan_id=scan_id).first()
+            if not row:
+                return None
+            return {
+                "scan_id": row.scan_id,
+                "doc_hash": row.doc_hash,
+                "status": row.status,
+                "total_types": row.total_types,
+                "processed_types": row.processed_types,
+                "results": json.loads(row.results_json or "{}"),
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+                "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+                "error_message": row.error_message,
+                "clause_types": json.loads(row.clause_types or "[]"),
+            }
+
+    def list_full_scans(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Lista os full scans mais recentes."""
+        with self._Session() as session:
+            rows = session.query(FullScanModel).order_by(FullScanModel.created_at.desc()).limit(limit).all()
+            return [
+                {
+                    "scan_id": r.scan_id,
+                    "doc_hash": r.doc_hash,
+                    "status": r.status,
+                    "total_types": r.total_types,
+                    "processed_types": r.processed_types,
+                    "created_at": r.created_at.isoformat() if r.created_at else "",
+                    "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                }
+                for r in rows
+            ]

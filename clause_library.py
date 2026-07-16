@@ -93,7 +93,199 @@ class ClauseType(Enum):
     PEDIDOS_PROCESSUAIS = "pedidos_processuais"
     FUNDAMENTACAO_CONSTITUCIONAL = "fundamentacao_constitucional"
 
+    # ── Grupo 3: Direito Civil material / termos jurídicos comuns ──────
+    RESPONSABILIDADE_CIVIL_EXTRACONTRATUAL = "responsabilidade_civil_extracontratual"
+    DANO_MORAL = "dano_moral"
+    DANO_MATERIAL_LUCROS_CESSANTES = "dano_material_lucros_cessantes"
+    NEXO_CAUSALIDADE_CULPA = "nexo_causalidade_culpa"
+    ENRIQUECIMENTO_SEM_CAUSA = "enriquecimento_sem_causa"
+    PRESCRICAO_CIVIL_CC = "prescricao_civil_cc"
+    CLAUSULA_PENAL_CIVIL = "clausula_penal_civil"
+    VICIO_REDIBITORIO_EVICCAO = "vicio_redibitorio_eviccao"
+    OBRIGACAO_FAZER_NAO_FAZER = "obrigacao_fazer_nao_fazer"
+    POSSE_PROPRIEDADE_USUCAPIAO = "posse_propriedade_usucapiao"
+    CONTRATO_CIVIL_TIPICO = "contrato_civil_tipico"
+    DIREITO_FAMILIA_ALIMENTOS = "direito_familia_alimentos"
+    DIREITO_SUCESSOES = "direito_sucessoes"
+
+    # ── Grupo 4: Requisitos processuais da petição inicial (CPC) ───────
+    REQUISITOS_PETICAO_INICIAL_ART319 = "requisitos_peticao_inicial_art319"
+
     OTHER = "outros"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Checklist explícito dos requisitos da petição inicial — Art. 319 do CPC
+# (Lei 13.105/2015), incisos I a VII e §§1º a 2º.
+#
+# Cada entrada abaixo corresponde a UM requisito legal e documenta:
+#   - "dispositivo":     o artigo/inciso exato da lei;
+#   - "descricao":       o que a lei exige nesse requisito;
+#   - "campo_esperado":  a chave que DEVE aparecer no JSON `dados` do item
+#                        extraído para esse requisito — isto é o "dicionário
+#                        explícito" do schema esperado, para não depender de
+#                        o LLM inventar nomes de campo diferentes a cada
+#                        execução.
+#
+# Este dict é a fonte única da verdade: tanto a instrução de extração
+# (ver CLAUSE_TYPE_CATALOG[REQUISITOS_PETICAO_INICIAL_ART319]) quanto
+# qualquer validação/checklist no front-end podem ser geradas a partir dele,
+# em vez de duplicar a lista de requisitos em texto solto.
+# ─────────────────────────────────────────────────────────────────────────
+REQUISITOS_PETICAO_INICIAL_ART319: Dict[str, Dict[str, str]] = {
+    "inciso_I_juizo": {
+        "dispositivo": "Art. 319, I, CPC",
+        "descricao": "O juízo (comarca/vara/foro/subseção judiciária) a que a petição é dirigida.",
+        "campo_esperado": "juizo_destinatario",
+    },
+    "inciso_II_qualificacao_partes": {
+        "dispositivo": "Art. 319, II, CPC",
+        "descricao": (
+            "Qualificação completa do autor E do réu — nome, prenome, "
+            "estado civil, existência de união estável, profissão, "
+            "número de inscrição no CPF (ou CNPJ, se pessoa jurídica), "
+            "endereço eletrônico (e-mail), domicílio e residência. É UM "
+            "único requisito legal que abrange as duas partes; informe a "
+            "qualificação de cada uma (autor e réu) dentro do mesmo campo, "
+            "e marque \"AUSENTE\" apenas se a qualificação de AMBAS "
+            "estiver faltando — se só uma das partes estiver "
+            "qualificada, descreva o que falta em vez de marcar ausente."
+        ),
+        "campo_esperado": "qualificacao_partes",
+    },
+    "inciso_III_fatos_fundamentos": {
+        "dispositivo": "Art. 319, III, CPC",
+        "descricao": (
+            "O fato e os fundamentos jurídicos do pedido — a causa de "
+            "pedir remota (fatos) e próxima (fundamentos legais/jurídicos "
+            "que os fatos autorizam a invocar)."
+        ),
+        "campo_esperado": "causa_de_pedir",
+    },
+    "inciso_IV_pedido": {
+        "dispositivo": "Art. 319, IV, CPC",
+        "descricao": (
+            "O pedido, com suas especificações — pedido certo e "
+            "determinado (art. 322/324 CPC), incluindo pedidos "
+            "cumulados, se houver."
+        ),
+        "campo_esperado": "pedidos",
+    },
+    "inciso_V_valor_causa": {
+        "dispositivo": "Art. 319, V, CPC (c/c arts. 291 a 293 CPC)",
+        "descricao": "O valor atribuído à causa, e o critério usado para chegar a ele, se explicitado.",
+        "campo_esperado": "valor_da_causa",
+    },
+    "inciso_VI_provas": {
+        "dispositivo": "Art. 319, VI, CPC",
+        "descricao": (
+            "As provas com que o autor pretende demonstrar a verdade dos "
+            "fatos alegados (documental, testemunhal, pericial, "
+            "depoimento pessoal, etc.)."
+        ),
+        "campo_esperado": "provas_requeridas",
+    },
+    "inciso_VII_opcao_audiencia": {
+        "dispositivo": "Art. 319, VII, CPC",
+        "descricao": (
+            "A opção expressa do autor pela realização, ou não, de "
+            "audiência de conciliação ou de mediação (art. 334 CPC)."
+        ),
+        "campo_esperado": "opcao_audiencia_conciliacao",
+    },
+    "paragrafo_1_diligencia_dados_ausentes": {
+        "dispositivo": "Art. 319, §1º, CPC",
+        "descricao": (
+            "Caso o autor não disponha das informações do inciso II, "
+            "requerimento ao juízo de diligências necessárias para "
+            "obtê-las (ex.: expedição de ofício a órgãos públicos)."
+        ),
+        "campo_esperado": "requerimento_diligencia_dados_reu",
+    },
+    "paragrafo_2_recusa_expressa_autocomposicao": {
+        "dispositivo": "Art. 319, §2º, CPC",
+        "descricao": (
+            "Se o autor optar por não realizar a autocomposição, essa "
+            "recusa deve constar de forma expressa na petição (o "
+            "silêncio não basta)."
+        ),
+        "campo_esperado": "recusa_expressa_autocomposicao",
+    },
+}
+
+
+def _build_peticao_inicial_art319_instruction() -> str:
+    """
+    Monta a instrução de extração do checklist do art. 319 do CPC a partir
+    de REQUISITOS_PETICAO_INICIAL_ART319, para que a lista de requisitos
+    nunca fique dessincronizada entre o texto do prompt e o schema
+    documentado no código.
+    """
+    total = len(REQUISITOS_PETICAO_INICIAL_ART319)
+
+    linhas = [
+        f"Você está analisando uma PETIÇÃO INICIAL civil. O art. 319 do "
+        f"CPC (Lei 13.105/2015) exige EXATAMENTE {total} requisitos "
+        f"obrigatórios — listados abaixo — e você precisa verificar "
+        f"TODOS os {total}, um a um, sem pular nenhum e sem parar de "
+        f"procurar após encontrar os primeiros.",
+        "",
+        f"IMPORTANTE: os {total} requisitos normalmente NÃO estão "
+        "concentrados numa única seção — eles ficam espalhados por "
+        "partes bem diferentes da petição: o cabeçalho de abertura "
+        "(juízo), o parágrafo de qualificação das partes (logo após o "
+        "cabeçalho), o corpo da narrativa (fatos e fundamentos jurídicos, "
+        "geralmente sob títulos como \"DOS FATOS\" e \"DO DIREITO\"), a "
+        "seção de pedidos (geralmente no final, sob \"DOS PEDIDOS\" ou "
+        "\"ANTE O EXPOSTO\"), a linha do valor da causa (quase sempre nas "
+        "últimas linhas, antes da assinatura), e a manifestação sobre "
+        "audiência de conciliação (pode aparecer tanto no meio do texto "
+        "quanto num dos itens finais do pedido). Portanto, use o "
+        f"documento INTEIRO como referência — não restrinja a busca a um "
+        "único trecho ou seção, mesmo que pareça o lugar mais óbvio.",
+        "",
+        f"Retorne um ÚNICO item, cujo campo `dados` seja um objeto JSON "
+        f"contendo EXATAMENTE estas {total} chaves (uma por requisito "
+        "legal, nem mais nem menos). Para cada chave, informe o conteúdo "
+        "encontrado no documento; se o requisito não constar da petição, "
+        "use o valor \"AUSENTE\" — nunca omita uma chave, mesmo que o "
+        "requisito correspondente não tenha sido encontrado.",
+        "",
+    ]
+    for i, info in enumerate(REQUISITOS_PETICAO_INICIAL_ART319.values(), start=1):
+        linhas.append(
+            f"{i}. \"{info['campo_esperado']}\" ({info['dispositivo']}): "
+            f"{info['descricao']}"
+        )
+    linhas.append("")
+    linhas.append(
+        f"Antes de responder, confira que os {total} itens acima foram "
+        "todos avaliados (presente ou AUSENTE) — não é aceitável "
+        "verificar só os requisitos mais fáceis de achar e ignorar o "
+        "resto. No campo `trecho_referencia`, cite o(s) trecho(s) do "
+        "documento que fundamentam sua avaliação de quais requisitos "
+        f"estão presentes ou ausentes. No campo `resumo`, informe "
+        f"quantos dos {total} requisitos do art. 319 foram atendidos "
+        f"(ex.: \"6 de {total} requisitos atendidos — ausente: valor da "
+        "causa e opção de audiência\")."
+    )
+    return "\n".join(linhas)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Tipos que exigem COBERTURA AMPLA do documento inteiro, em vez da busca
+# TF-IDF normal (que só seleciona os trechos mais "parecidos" com a
+# instrução). O checklist do art. 319 do CPC é um checklist ESTRUTURAL —
+# seus 9 requisitos ficam espalhados por partes muito diferentes da
+# petição (cabeçalho, qualificação, fatos, pedidos, fecho), muitas vezes
+# em trechos que não compartilham vocabulário com a instrução em si (ex.:
+# a linha do valor da causa não menciona "requisito" nem "CPC"). Por isso,
+# para estes tipos, app.py deve enviar TODOS os chunks do documento ao
+# extrator, em vez de filtrar pelos mais relevantes via Vectorizer.
+# ─────────────────────────────────────────────────────────────────────────
+FULL_DOCUMENT_CLAUSE_TYPES = {
+    ClauseType.REQUISITOS_PETICAO_INICIAL_ART319.value,
+}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -381,6 +573,197 @@ CLAUSE_TYPE_CATALOG: Dict[str, Dict[str, str]] = {
             "trecho de referência."
         ),
     },
+
+    # ── Direito Civil material / termos jurídicos comuns ────────────────
+    ClauseType.RESPONSABILIDADE_CIVIL_EXTRACONTRATUAL.value: {
+        "label": "Responsabilidade civil extracontratual (ato ilícito)",
+        "search_instruction": (
+            "Extraia todas as passagens que tratam de responsabilidade "
+            "civil extracontratual (aquiliana). Para cada uma, informe "
+            "nos campos de `dados`: {\"ato_ilícito\": a conduta imputada "
+            "(ação ou omissão), \"fundamento_legal\": dispositivo citado "
+            "(ex.: art. 186, 187 ou 927 do Código Civil), "
+            "\"responsabilidade_subjetiva_ou_objetiva\": se depende de "
+            "culpa/dolo ou é objetiva (ex.: art. 933, 927, §único, CC), "
+            "\"excludente_alegada\": culpa exclusiva da vítima, fato de "
+            "terceiro, caso fortuito ou força maior, se houver}. Informe "
+            "também o trecho de referência."
+        ),
+    },
+    ClauseType.DANO_MORAL.value: {
+        "label": "Dano moral",
+        "search_instruction": (
+            "Extraia todas as passagens sobre dano moral. Em `dados`, "
+            "informe: {\"fato_gerador\": o que causou o abalo moral, "
+            "\"fundamento_legal\": dispositivo citado (ex.: art. 5º, V e "
+            "X, CF; art. 186 e 927 do CC), \"valor_pretendido\": quantia "
+            "pedida a título de indenização, se houver, "
+            "\"cumulacao_dano_estetico\": se há pedido cumulado de dano "
+            "estético (Súmula 387/STJ), \"criterio_fixacao\": critério "
+            "de arbitramento citado (proporcionalidade, razoabilidade, "
+            "caráter pedagógico/punitivo)}. Inclua o trecho de "
+            "referência."
+        ),
+    },
+    ClauseType.DANO_MATERIAL_LUCROS_CESSANTES.value: {
+        "label": "Dano material / lucros cessantes",
+        "search_instruction": (
+            "Extraia todas as passagens sobre dano material (dano "
+            "emergente) e lucros cessantes. Em `dados`, informe: "
+            "{\"tipo\": \"dano_emergente\" ou \"lucros_cessantes\" ou "
+            "\"ambos\", \"fundamento_legal\": dispositivo citado (ex.: "
+            "art. 402 e 403 do CC), \"valor_ou_criterio_calculo\": valor "
+            "pedido ou método de cálculo usado, \"comprovacao\": meio de "
+            "prova indicado (notas fiscais, perícia contábil, etc.)}. "
+            "Inclua o trecho de referência."
+        ),
+    },
+    ClauseType.NEXO_CAUSALIDADE_CULPA.value: {
+        "label": "Nexo de causalidade / culpa",
+        "search_instruction": (
+            "Extraia as passagens que discutem os elementos da "
+            "responsabilidade civil (conduta, culpa/dolo, dano, nexo "
+            "causal — art. 186 CC). Em `dados`, informe: {\"conduta\": "
+            "ação ou omissão apontada, \"elemento_subjetivo\": culpa ou "
+            "dolo alegado (ou dispensa por responsabilidade objetiva), "
+            "\"nexo_causal_argumento\": como se liga a conduta ao dano, "
+            "\"teoria_causalidade\": se mencionada (dano direto e "
+            "imediato, causalidade adequada, etc.)}. Inclua o trecho de "
+            "referência."
+        ),
+    },
+    ClauseType.ENRIQUECIMENTO_SEM_CAUSA.value: {
+        "label": "Enriquecimento sem causa",
+        "search_instruction": (
+            "Extraia as passagens sobre enriquecimento sem causa. Em "
+            "`dados`, informe: {\"fundamento_legal\": dispositivo citado "
+            "(art. 884 a 886 do CC), \"quem_enriqueceu\": parte "
+            "apontada como beneficiada indevidamente, "
+            "\"quem_empobreceu\": parte que sofreu o prejuízo "
+            "correspondente, \"valor_restituivel\": valor pedido a "
+            "título de restituição}. Inclua o trecho de referência."
+        ),
+    },
+    ClauseType.PRESCRICAO_CIVIL_CC.value: {
+        "label": "Prescrição civil (Código Civil)",
+        "search_instruction": (
+            "Extraia as passagens sobre prazos prescricionais civis "
+            "(fora da esfera tributária). Em `dados`, informe: "
+            "{\"prazo_aplicado\": prazo em anos (ex.: 10 anos - regra "
+            "geral do art. 205 CC; ou prazo especial do art. 206 CC), "
+            "\"fundamento_legal\": dispositivo citado, \"termo_inicial\": "
+            "marco de início da contagem (art. 189 CC - nascimento da "
+            "pretensão), \"causa_suspensao_interrupcao\": se há "
+            "alegação de suspensão/interrupção do prazo (arts. 197 a "
+            "204 CC)}. Inclua o trecho de referência."
+        ),
+    },
+    ClauseType.CLAUSULA_PENAL_CIVIL.value: {
+        "label": "Cláusula penal (Código Civil)",
+        "search_instruction": (
+            "Extraia todas as cláusulas penais (multa contratual civil, "
+            "arts. 408 a 416 do CC). Em `dados`, informe: "
+            "{\"tipo\": \"compensatória\" ou \"moratória\", "
+            "\"valor_ou_percentual\": valor/percentual fixado, "
+            "\"limite_legal\": se respeita o limite do art. 412 CC (não "
+            "pode exceder o valor da obrigação principal), "
+            "\"evento_gerador\": inadimplemento total, parcial ou mora}. "
+            "Inclua a cláusula/trecho de referência."
+        ),
+    },
+    ClauseType.VICIO_REDIBITORIO_EVICCAO.value: {
+        "label": "Vícios redibitórios / evicção",
+        "search_instruction": (
+            "Extraia as passagens sobre vícios redibitórios (arts. 441 a "
+            "446 do CC) ou evicção (arts. 447 a 457 do CC). Em `dados`, "
+            "informe: {\"instituto\": \"vicio_redibitorio\" ou "
+            "\"eviccao\", \"fundamento_legal\": dispositivo citado, "
+            "\"defeito_ou_perda_alegada\": defeito oculto do bem ou "
+            "perda da coisa por sentença/ato administrativo, "
+            "\"remedio_pedido\": redibição (devolução), abatimento no "
+            "preço, ou indenização}. Inclua o trecho de referência."
+        ),
+    },
+    ClauseType.OBRIGACAO_FAZER_NAO_FAZER.value: {
+        "label": "Obrigação de fazer / não fazer",
+        "search_instruction": (
+            "Extraia as passagens sobre obrigações de fazer ou não "
+            "fazer. Em `dados`, informe: {\"tipo\": \"fazer\" ou "
+            "\"nao_fazer\", \"conduta_exigida\": o que deve ou não ser "
+            "feito, \"fundamento_legal\": dispositivo citado (ex.: arts. "
+            "247 a 251 do CC; art. 497 e 536/537 do CPC para tutela "
+            "específica e multa/astreintes), \"multa_cominatoria\": "
+            "valor/periodicidade da multa pedida em caso de "
+            "descumprimento, se houver}. Inclua o trecho de referência."
+        ),
+    },
+    ClauseType.POSSE_PROPRIEDADE_USUCAPIAO.value: {
+        "label": "Posse / propriedade / usucapião",
+        "search_instruction": (
+            "Extraia as passagens sobre posse, propriedade ou usucapião. "
+            "Em `dados`, informe: {\"instituto\": \"posse\", "
+            "\"propriedade\" ou \"usucapiao\", \"fundamento_legal\": "
+            "dispositivo citado (ex.: arts. 1.196 a 1.224 do CC para "
+            "posse; arts. 1.238 a 1.244 do CC para usucapião — "
+            "extraordinária/ordinária/especial), \"tempo_de_posse\": "
+            "período alegado e se contínuo/mansa e pacífica, "
+            "\"tipo_usucapiao\": modalidade invocada, se aplicável}. "
+            "Inclua o trecho de referência."
+        ),
+    },
+    ClauseType.CONTRATO_CIVIL_TIPICO.value: {
+        "label": "Contrato civil típico (compra e venda, locação, comodato, mútuo, doação)",
+        "search_instruction": (
+            "Extraia as passagens que caracterizam o tipo contratual "
+            "civil em discussão. Em `dados`, informe: {\"tipo_contrato\": "
+            "\"compra_e_venda\" (arts. 481-532 CC), \"locacao\" (arts. "
+            "565-578 CC / Lei 8.245/91), \"comodato\" (arts. 579-585 "
+            "CC), \"mutuo\" (arts. 586-592 CC), \"doacao\" (arts. "
+            "538-564 CC) ou \"prestacao_de_servicos\" (arts. 593-609 "
+            "CC), \"objeto\": o que é vendido/locado/emprestado/doado, "
+            "\"partes\": quem figura como cada parte (ex.: locador/"
+            "locatário, comodante/comodatário)}. Inclua o trecho de "
+            "referência."
+        ),
+    },
+    ClauseType.DIREITO_FAMILIA_ALIMENTOS.value: {
+        "label": "Direito de família / alimentos",
+        "search_instruction": (
+            "Extraia as passagens sobre pensão alimentícia ou outros "
+            "temas de direito de família. Em `dados`, informe: "
+            "{\"fundamento_legal\": dispositivo citado (ex.: art. 1.694 "
+            "a 1.710 do CC; Lei 5.478/68 - Lei de Alimentos), "
+            "\"criterio_binomio\": referência ao binômio/trinômio "
+            "necessidade-possibilidade-proporcionalidade (art. 1.694, "
+            "§1º, CC), \"valor_ou_percentual_pedido\": valor ou "
+            "percentual de alimentos pedido, \"beneficiario\": quem "
+            "pede os alimentos, \"obrigado\": de quem se pede}. Inclua o "
+            "trecho de referência."
+        ),
+    },
+    ClauseType.DIREITO_SUCESSOES.value: {
+        "label": "Direito das sucessões (herança, testamento, inventário)",
+        "search_instruction": (
+            "Extraia as passagens sobre sucessão hereditária, testamento "
+            "ou inventário. Em `dados`, informe: {\"fundamento_legal\": "
+            "dispositivo citado (ex.: art. 1.784 CC - princípio da "
+            "saisine; art. 1.829 CC - ordem de vocação hereditária; art. "
+            "1.846 CC - legítima; arts. 1.857 e ss. CC - testamento; "
+            "arts. 610 a 673 do CPC - inventário e partilha), "
+            "\"instituto\": \"inventario\", \"testamento\", \"legitima\" "
+            "ou \"vocacao_hereditaria\", \"herdeiros_envolvidos\": quem "
+            "figura na disputa/partilha, \"bens_ou_valor\": bens ou "
+            "valor da herança em discussão}. Inclua o trecho de "
+            "referência."
+        ),
+    },
+
+    # ── Requisitos processuais da petição inicial (CPC) ─────────────────
+    ClauseType.REQUISITOS_PETICAO_INICIAL_ART319.value: {
+        "label": "Checklist da petição inicial (art. 319 do CPC)",
+        "search_instruction": _build_peticao_inicial_art319_instruction(),
+    },
+
     ClauseType.OTHER.value: {
         "label": "Outro (instrução livre)",
         "search_instruction": (
@@ -805,7 +1188,10 @@ class ClauseLibrary:
                 approval_status=ApprovalStatus.PENDING.value
             ).count()
 
-            # Por tipo
+            # Por tipo — usa o LABEL amigável do catálogo (ex.: "Pedidos
+            # (requerimentos finais da petição)"), não o value bruto do
+            # enum (ex.: "pedidos_processuais"), que é o que aparecia nos
+            # cards de estatística da biblioteca.
             by_type = {}
             for type_enum in ClauseType:
                 count = session.query(ApprovedClause).filter_by(
@@ -813,7 +1199,10 @@ class ClauseLibrary:
                     approval_status=ApprovalStatus.APPROVED.value
                 ).count()
                 if count > 0:
-                    by_type[type_enum.value] = count
+                    label = CLAUSE_TYPE_CATALOG.get(type_enum.value, {}).get(
+                        "label", type_enum.value
+                    )
+                    by_type[label] = count
 
             # Mais usadas
             most_used = session.query(ApprovedClause).filter_by(
@@ -891,6 +1280,53 @@ class ClauseLibrary:
             ],
             ClauseType.PEDIDOS_PROCESSUAIS.value: [
                 "requer-se", "requer o exequente", "dos pedidos",
+            ],
+            # Direito Civil material
+            ClauseType.RESPONSABILIDADE_CIVIL_EXTRACONTRATUAL.value: [
+                "ato ilícito", "responsabilidade extracontratual", "aquiliana",
+                "art. 186", "art. 927",
+            ],
+            ClauseType.DANO_MORAL.value: [
+                "dano moral", "abalo moral", "dano extrapatrimonial",
+            ],
+            ClauseType.DANO_MATERIAL_LUCROS_CESSANTES.value: [
+                "dano material", "lucros cessantes", "dano emergente",
+            ],
+            ClauseType.NEXO_CAUSALIDADE_CULPA.value: [
+                "nexo causal", "nexo de causalidade", "culpa exclusiva",
+            ],
+            ClauseType.ENRIQUECIMENTO_SEM_CAUSA.value: [
+                "enriquecimento sem causa", "enriquecimento ilícito",
+            ],
+            ClauseType.PRESCRICAO_CIVIL_CC.value: [
+                "art. 205", "art. 206", "prescrição decenal", "pretensão",
+            ],
+            ClauseType.CLAUSULA_PENAL_CIVIL.value: [
+                "cláusula penal", "multa compensatória", "multa moratória",
+            ],
+            ClauseType.VICIO_REDIBITORIO_EVICCAO.value: [
+                "vício redibitório", "vícios redibitórios", "evicção",
+            ],
+            ClauseType.OBRIGACAO_FAZER_NAO_FAZER.value: [
+                "obrigação de fazer", "obrigação de não fazer", "astreintes",
+                "multa cominatória",
+            ],
+            ClauseType.POSSE_PROPRIEDADE_USUCAPIAO.value: [
+                "usucapião", "posse mansa e pacífica", "ad usucapionem",
+            ],
+            ClauseType.CONTRATO_CIVIL_TIPICO.value: [
+                "compra e venda", "comodato", "mútuo", "doação", "locação",
+            ],
+            ClauseType.DIREITO_FAMILIA_ALIMENTOS.value: [
+                "pensão alimentícia", "alimentos", "binômio necessidade",
+            ],
+            ClauseType.DIREITO_SUCESSOES.value: [
+                "inventário", "herança", "testamento", "vocação hereditária",
+                "partilha",
+            ],
+            # Requisitos processuais
+            ClauseType.REQUISITOS_PETICAO_INICIAL_ART319.value: [
+                "art. 319", "petição inicial", "requisitos da petição",
             ],
             # Contratuais
             ClauseType.FORCE_MAJEURE.value: [
@@ -1009,16 +1445,29 @@ def setup_clause_routes(app):
         from flask import request
 
         clause_type = request.args.get("type")
-        # Padrão mudou para false - mostra pendentes + aprovadas
-        approved_only = request.args.get("approved", "false").lower() == "true"
+        status = request.args.get("status", "approved")  # Padrão: aprovadas
 
         library = ClauseLibrary()
+
+        # Converte status para approved_only
+        if status == "approved":
+            approved_only = True
+        elif status == "pending":
+            approved_only = False
+        else:
+            # "all" ou qualquer outro valor
+            approved_only = False
 
         if clause_type:
             results = library.search_by_type(clause_type, approved_only)
         else:
-            # Lista todas (pendentes + aprovadas)
             results = library.search_by_type("", approved_only)
+
+        # Se status=approved_only, filtra novamente para garantir
+        if status == "approved":
+            results = [r for r in results if r.get("approval_status") == "approved"]
+        elif status == "pending":
+            results = [r for r in results if r.get("approval_status") == "pending"]
 
         return {"results": results, "total": len(results)}
 
@@ -1028,8 +1477,18 @@ def setup_clause_routes(app):
         from flask import request
 
         limit = int(request.args.get("limit", 5))
+        status = request.args.get("status", "approved")  # Padrão: aprovadas
+
         library = ClauseLibrary()
-        results = library.get_recent_clauses(limit=limit)
+        all_results = library.get_recent_clauses(limit=limit * 2)  # Pega mais para filtrar
+
+        # Filtra por status
+        if status == "approved":
+            results = [r for r in all_results if r.get("approval_status") == "approved"][:limit]
+        elif status == "pending":
+            results = [r for r in all_results if r.get("approval_status") == "pending"][:limit]
+        else:
+            results = all_results[:limit]
 
         return {"results": results, "total": len(results)}
 

@@ -106,7 +106,7 @@
   .btn-secondary:hover{ border-color: var(--accent); }
 
   .features{
-    display:grid; grid-template-columns: 1fr 1fr; gap:1px;
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap:1px;
     background: var(--border); border-radius: var(--r-lg); overflow:hidden;
     margin-bottom:40px;
   }
@@ -237,6 +237,19 @@
   .status-badge.approved{ background:#D4EDDA; color:#155724; }
   .trecho{ color: var(--ink); line-height:1.5; margin:8px 0; font-size:13px; }
 
+  .status-tabs{
+    display:flex; gap:8px; margin:16px 0;
+  }
+  .tab-btn{
+    padding:8px 16px; border:1px solid var(--border); border-radius:100px;
+    background:var(--page); color:var(--ink-soft); cursor:pointer;
+    font-size:13px; font-weight:500; font-family:var(--sans); transition:all 0.2s;
+  }
+  .tab-btn:hover{ background:var(--page); color:var(--ink); }
+  .tab-btn.active{
+    background:var(--ink); color:#fff; border-color:var(--ink);
+  }
+
   footer{
     max-width:1040px; margin:0 auto; padding:16px clamp(20px,4vw,48px) 40px;
     color: var(--ink-faint); font-size:11px; font-family: var(--mono);
@@ -260,6 +273,7 @@
     <nav class="nav-buttons">
       <button class="nav-btn" data-pane="extrator">Extrator de PDFs</button>
       <button class="nav-btn" data-pane="biblioteca">Biblioteca de Cláusulas</button>
+      <button class="nav-btn" data-pane="minutas">Procure nas Minutas</button>
     </nav>
   </div>
 </header>
@@ -269,10 +283,11 @@
   <section class="pane active" id="pane-sobre">
     <p class="eyebrow">gabinete de cláusulas</p>
     <h1 class="hero-title">Cláusulas contratuais, resolvidas com precisão.</h1>
-    <p class="hero-sub">Extraia informação de qualquer PDF sob demanda, ou reaproveite cláusulas já redigidas e aprovadas em contratos anteriores — duas ferramentas, um só lugar.</p>
+    <p class="hero-sub">Extraia informação de qualquer PDF sob demanda, reaproveite cláusulas já redigidas e aprovadas em contratos anteriores, ou converse diretamente com a IA sobre suas minutas — três ferramentas, um só lugar.</p>
     <div class="hero-cta">
       <button class="btn-primary" data-pane="extrator">Usar o extrator</button>
       <button class="btn-secondary" data-pane="biblioteca">Ver biblioteca de cláusulas</button>
+      <button class="btn-secondary" data-pane="minutas">Procurar nas minutas</button>
     </div>
 
     <div class="features">
@@ -297,6 +312,15 @@
         </div>
         <h3>Biblioteca de Cláusulas</h3>
         <p>Um repositório de cláusulas já usadas em contratos anteriores. Busque por assunto ou tipo, e aprove ou rejeite precedentes pendentes de revisão.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+        </div>
+        <h3>Procure nas Minutas</h3>
+        <p>Converse diretamente com a IA sobre qualquer minuta já processada — ela usa as ferramentas de busca (MCP) para consultar jobs, itens extraídos e o texto original dos documentos.</p>
       </div>
     </div>
 
@@ -360,6 +384,16 @@
 
       <div class="stats" id="stats"></div>
 
+      <!-- Abas Aprovadas/Pendentes -->
+      <div class="status-tabs">
+        <button class="tab-btn active" data-status="approved" onclick="switchStatus('approved')">
+          Aprovadas
+        </button>
+        <button class="tab-btn" data-status="pending" onclick="switchStatus('pending')">
+          Pendentes
+        </button>
+      </div>
+
       <label for="searchInput">Buscar precedentes</label>
       <input type="text" id="searchInput" placeholder="Ex: cláusulas sobre prescrição, honorários, contribuições parafiscais...">
 
@@ -368,12 +402,6 @@
           <label for="typeFilter">Tipo</label>
           <select id="typeFilter">
             <option value="">Todos os tipos</option>
-            <option value="forca_maior">Força Maior</option>
-            <option value="rescisao">Rescisão</option>
-            <option value="multa">Multa/Penalidade</option>
-            <option value="reajuste">Reajuste</option>
-            <option value="confidencialidade">Confidencialidade</option>
-            <option value="pagamento">Pagamento</option>
           </select>
         </div>
         <button class="primary" onclick="search()">Buscar</button>
@@ -381,6 +409,29 @@
 
       <div style="height:26px"></div>
       <div class="results" id="results"></div>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-minutas">
+    <div class="card-wrap" style="padding:0; overflow:hidden;">
+      <div style="padding: clamp(28px,4vw,44px) clamp(28px,4vw,44px) 20px; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap;">
+        <div>
+          <h2 class="section-title">Procure nas minutas</h2>
+          <p class="section-sub" style="margin-bottom:0;">Converse em linguagem natural sobre qualquer minuta já processada — a IA usa as ferramentas de busca (MCP) para consultar os jobs, itens extraídos e o texto original dos documentos.</p>
+        </div>
+        <a id="minutasOpenTab" href="{{ openwebui_url }}" target="_blank" rel="noopener" class="btn-secondary" style="text-decoration:none; white-space:nowrap; flex:0 0 auto;">Abrir em nova guia ↗</a>
+      </div>
+      <iframe
+        id="minutasFrame"
+        src="{{ openwebui_url }}"
+        title="Procure nas minutas — Open WebUI"
+        style="width:100%; height:78vh; border:0; display:block; border-top:1px solid var(--border);"
+        allow="clipboard-write"
+        loading="lazy"
+      ></iframe>
+      <div class="hint" style="padding:12px clamp(28px,4vw,44px) 20px;">
+        Primeira vez aqui? Se o login não aparecer corretamente dentro da tela acima, use "Abrir em nova guia" — alguns navegadores bloqueiam cookies de sessão entre portas diferentes dentro de um iframe.
+      </div>
     </div>
   </section>
 
@@ -420,6 +471,28 @@
       });
     } catch (error) {
       console.error('Erro ao carregar tipos:', error);
+    }
+  }
+
+  // Carregar tipos de cláusulas para o filtro da Biblioteca
+  async function loadLibraryTypes() {
+    try {
+      const res = await fetch('/api/clause-types');
+      const data = await res.json();
+      const select = document.getElementById('typeFilter');
+
+      // Limpa opções (mantém apenas a primeira)
+      select.innerHTML = '<option value="">Todos os tipos</option>';
+
+      // Adiciona cada tipo
+      data.results.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.value;
+        option.textContent = type.label;
+        select.appendChild(option);
+      });
+    } catch (error) {
+      console.error('Erro ao carregar tipos da biblioteca:', error);
     }
   }
 
@@ -509,10 +582,17 @@
       }
 
       statusEl.className = 'status ok';
-      statusEl.textContent = `✔ job ${data.job_id} concluído — ${data.total} item(ns) extraído(s)` +
-        (data.from_cache ? ' (documento reaproveitado do cache)' : '');
 
-      resultTitle.textContent = `Itens extraídos — job ${data.job_id}`;
+      if (data.no_clauses_found) {
+        // Mensagem destacada quando não há cláusulas
+        statusEl.innerHTML = `<strong>⚠️ Documento não contém a cláusula solicitada</strong> — job ${data.job_id} concluído` +
+          (data.from_cache ? ' (documento reaproveitado do cache)' : '');
+        resultTitle.textContent = `Nenhuma cláusula encontrada — job ${data.job_id}`;
+      } else {
+        statusEl.textContent = `✔ job ${data.job_id} concluído — ${data.total} item(ns) extraído(s)` +
+          (data.from_cache ? ' (documento reaproveitado do cache)' : '');
+        resultTitle.textContent = `Itens extraídos — job ${data.job_id}`;
+      }
       resultItems.innerHTML = data.items.map(it => `
         <div class="item">
           <h4>${it.resumo}</h4>
@@ -567,6 +647,21 @@
     }
   }
 
+  // Status atual das abas (padrão: aprovadas)
+  let currentStatus = 'approved';
+
+  function switchStatus(status) {
+    currentStatus = status;
+
+    // Atualiza visual das abas
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.status === status);
+    });
+
+    // Recarrega a lista com o novo status
+    search();
+  }
+
   async function search() {
     const query = document.getElementById('searchInput').value;
     const type = document.getElementById('typeFilter').value;
@@ -578,8 +673,8 @@
       let data;
 
       if (!query && !type) {
-        // Se não tem busca, carrega as mais recentes
-        res = await fetch(`${API_BASE}/clauses/recent?limit=5`);
+        // Se não tem busca, carrega as mais recentes do status atual
+        res = await fetch(`${API_BASE}/clauses/recent?limit=5&status=${currentStatus}`);
         data = await res.json();
       } else {
         // Busca por TF-IDF
@@ -588,7 +683,22 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: query || type, type, top_k: 20 })
         });
-        data = await res.json();
+        const searchData = await res.json();
+
+        // Filtra resultados pelo status atual
+        if (currentStatus === 'approved') {
+          data = {
+            results: searchData.results.filter(r => r.approval_status === 'approved'),
+            total: searchData.results.filter(r => r.approval_status === 'approved').length
+          };
+        } else if (currentStatus === 'pending') {
+          data = {
+            results: searchData.results.filter(r => r.approval_status === 'pending'),
+            total: searchData.results.filter(r => r.approval_status === 'pending').length
+          };
+        } else {
+          data = searchData;
+        }
       }
 
       displayResults(data.results);
@@ -606,9 +716,30 @@
     }
 
     container.innerHTML = results.map(clause => {
-      // Trunca trecho de referência em ~150 caracteres
-      const trecho = clause.original_text || clause.summary || '';
-      const trechoTruncado = trecho.length > 150 ? trecho.substring(0, 150) + '...' : trecho;
+      // Função helper para pegar o trecho de qualquer campo disponível
+      const getTrecho = (item) => {
+        // Ordem de prioridade de campos
+        const priorityFields = ['original_text', 'summary', 'trecho_referencia', 'clausula', 'conteudo'];
+
+        for (const field of priorityFields) {
+          if (item[field] && typeof item[field] === 'string' && item[field].trim()) {
+            return item[field].trim();
+          }
+        }
+
+        // Fallback: pega o primeiro valor de string não vazio do dict
+        for (const key in item) {
+          if (typeof item[key] === 'string' && item[key].trim() && key !== 'id') {
+            return item[key].trim();
+          }
+        }
+
+        return 'Conteúdo não disponível';
+      };
+
+      // Trunca trecho de referência em ~450 caracteres (aumentado de 150)
+      const trecho = getTrecho(clause);
+      const trechoTruncado = trecho.length > 450 ? trecho.substring(0, 450) + '...' : trecho;
 
       // Formata data de criação
       const dataCriacao = clause.created_at ? new Date(clause.created_at).toLocaleDateString('pt-BR') : 'N/A';
@@ -679,8 +810,9 @@
     if (e.key === 'Enter') search();
   });
 
-  // Carrega contadores e cláusulas recentes ao iniciar
+  // Carrega contadores, tipos e cláusulas recentes ao iniciar
   loadStats();
+  loadLibraryTypes();  // Carrega tipos dinamicamente no filtro da Biblioteca
   search();
 </script>
 </body>
