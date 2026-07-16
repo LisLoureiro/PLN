@@ -10,18 +10,19 @@ import os
 import re
 import uuid
 from pathlib import Path
+from typing import List
 
 from flask import Flask, jsonify, redirect, render_template, request
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.serving import run_simple
 
-from custom_extractor import CustomExtractor
+from custom_extractor import CustomExtractor, ExtractionParseError
 from pdf_normalizer import PDFNormalizer
 from store import Store
 from vectorizer import Vectorizer
 
 from mcp_server import app as mcp_asgi_app
-from clause_library import setup_clause_routes, build_instruction_for_type
+from clause_library import setup_clause_routes, build_instruction_for_type, ClauseLibrary, FULL_DOCUMENT_CLAUSE_TYPES
 
 # ─────────────────────────────────────────────────────────────
 # Logging com cores e separadores visuais
@@ -222,9 +223,24 @@ def upload():
         logger.info(f"[DEBUG] Exemplo de chunk (primeiros 200 chars): {chunks[0][:200] if chunks else 'SEM CHUNKS'}...")
 
         sep("Etapa 5 — Vetorização TF-IDF guiada pela instrução")
-        vec = Vectorizer()
-        vec.index_chunks(chunks)
-        relevant = vec.search(instrucao)
+        if clause_type in FULL_DOCUMENT_CLAUSE_TYPES:
+            # Checklists ESTRUTURAIS (ex.: art. 319 do CPC) têm requisitos
+            # espalhados por partes muito diferentes do documento, muitas
+            # vezes em trechos sem vocabulário em comum com a instrução
+            # (a linha do valor da causa não menciona "requisito"). Filtrar
+            # pelos chunks "mais parecidos" com a instrução arrisca deixar
+            # de fora justamente os trechos que provam um requisito ausente.
+            # Por isso, para esses tipos, o documento INTEIRO é enviado —
+            # sem filtro de relevância.
+            relevant = chunks
+            logger.info(
+                f"{YELLOW}⚡ Tipo '{clause_type}' exige cobertura ampla — "
+                f"pulando filtro TF-IDF, enviando todos os {len(chunks)} chunks{RESET}"
+            )
+        else:
+            vec = Vectorizer()
+            vec.index_chunks(chunks)
+            relevant = vec.search(instrucao)
         logger.info(f"{GREEN}✔ {len(relevant)} trechos relevantes para a instrução{RESET}")
         logger.info(f"[DEBUG] Exemplo de trecho relevante (primeiros 300 chars): {relevant[0][:300] if relevant else 'SEM TRECHOS RELEVANTES'}...")
 
@@ -236,7 +252,33 @@ def upload():
         for i, trecho in enumerate(relevant):
             logger.info(f"[DEBUG] TRECHO #{i+1}/{len(relevant)} ({len(trecho)} chars): {trecho}")
         extractor = CustomExtractor(base_url=ollama_url)
-        items = extractor.extract(relevant, instrucao)
+        # Cobertura ampla (documento inteiro) tende a gerar um contexto
+        # bem maior que o padrão — usa um num_ctx maior para não truncar
+        # justamente os trechos que provam um requisito ausente.
+        num_ctx_override = 16384 if clause_type in FULL_DOCUMENT_CLAUSE_TYPES else None
+        try:
+            items = extractor.extract(relevant, instrucao, num_ctx_override=num_ctx_override)
+        except ExtractionParseError as e:
+            # IMPORTANTE: isto é diferente de "0 itens encontrados". O
+            # modelo não devolveu um JSON parseável mesmo após retry com
+            # prompt reforçado (ver custom_extractor.py) — normalmente
+            # porque o contexto ficou grande demais ou o modelo "conversou"
+            # em vez de extrair. Não deve ser reportado como "cláusula
+            # ausente do documento", que é uma conclusão totalmente
+            # diferente e enganosa para quem está revisando a petição.
+            logger.error(f"{RED}✘ Modelo não retornou JSON válido após retries: {e}{RESET}")
+            return jsonify({
+                "error": (
+                    "O modelo de IA não conseguiu retornar os dados no formato "
+                    "esperado, mesmo após uma nova tentativa automática. Isso NÃO "
+                    "significa que a cláusula/tópico esteja ausente do documento — "
+                    "geralmente indica que o contexto enviado ficou grande demais "
+                    "para o modelo local, ou a resposta veio como texto explicativo "
+                    "em vez de dados extraídos. Tente novamente; se persistir, "
+                    "reduza o tamanho do PDF ou refine a instrução."
+                ),
+                "parse_failure": True,
+            }), 502
         logger.info(f"{GREEN}✔ {len(items)} itens extraídos{RESET}")
 
         sep("Etapa 7 — Persistência (PostgreSQL + ChromaDB)")
@@ -246,16 +288,31 @@ def upload():
         )
         logger.info(f"{GREEN}✔ Job {job_id} salvo com sucesso{RESET}")
 
+        # Adiciona itens à Biblioteca de Cláusulas como pendentes
+        library = ClauseLibrary()
+        items_dict = [item.to_dict() for item in items]
+        added = library.add_from_extraction(
+            job_id=job_id,
+            doc_hash=doc_hash,
+            source_file=f.filename,
+            items=items_dict,
+            auto_approve=False,  # Itens novos começam como pendentes
+            clause_type=clause_type,
+        )
+        logger.info(f"{GREEN}✔ {added} cláusula(s) adicionada(s) à biblioteca (pendente){RESET}")
+
         sep("EXTRAÇÃO CONCLUÍDA ✔", "▶")
 
+        total_items = len(items)
         return jsonify({
             "job_id": job_id,
             "instrucao": instrucao,
             "clause_type": clause_type or None,
             "items": [i.to_dict() for i in items],
-            "total": len(items),
+            "total": total_items,
             "from_cache": from_cache,
             "markdown_chars": len(markdown),
+            "no_clauses_found": total_items == 0,  # Flag para frontend
         })
 
     except Exception as e:
@@ -319,23 +376,221 @@ def _sha256_file(path: Path, block_size: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
-def _chunk_markdown(md: str, chunk_size: int = 800, overlap: int = 100) -> list:
-    sections = re.split(r"(?=\n#{2,3} )", md)
+# ─────────────────────────────────────────────────────────────
+# Chunking híbrido: cláusula/seção → parágrafo → frase (fallback)
+#
+# Objetivo: cada chunk enviado ao Vectorizer/Ollama deve ser, sempre que
+# possível, uma cláusula ou seção COMPLETA — não um pedaço arbitrário de
+# N caracteres que pode começar no meio de uma cláusula e terminar no
+# meio da próxima.
+#
+# Estratégia (3 níveis, cai para o próximo só quando necessário):
+#   1. CLÁUSULA/SEÇÃO — corte primário nas fronteiras de heading ##/###
+#      já marcadas pelo PDFNormalizer (cláusulas, seções, títulos). Cada
+#      cláusula completa vira um chunk, do heading até o próximo heading
+#      de mesmo nível. Headings #### (itens numerados como "3.1") NÃO são
+#      fronteira de corte — continuam dentro do corpo da cláusula-mãe.
+#   2. PARÁGRAFO — se uma cláusula isolada passar de MAX_CLAUSE_CHARS,
+#      ela é subdividida em chunks por parágrafo, nunca cortando um
+#      parágrafo no meio.
+#   3. FRASE — último recurso, só usado se um único parágrafo (raro)
+#      ainda assim passar de MAX_CLAUSE_CHARS: corta por frase.
+#
+# SEM overlap entre chunks: como cada chunk já é uma unidade textual
+# completa (cláusula, parágrafo ou frase), repetir texto na fronteira
+# não recupera contexto perdido — só gasta tokens à toa.
+# ─────────────────────────────────────────────────────────────
+
+MAX_CLAUSE_CHARS = int(os.environ.get("CHUNK_MAX_CLAUSE_CHARS", "2000"))
+MIN_SECTION_CHARS = 80  # títulos "órfãos" (heading sem corpo) são anexados à seção seguinte
+
+_HEADING_RE = re.compile(r'^(#+)\s+.*$')
+
+
+def _chunk_markdown(md: str, max_clause_chars: int = MAX_CLAUSE_CHARS) -> list:
+    """
+    Particiona o Markdown normalizado preservando cláusulas/seções
+    completas. Ver comentário acima para a estratégia em 3 níveis.
+
+    Quando uma cláusula precisa ser subdividida (nível 2 ou 3), o
+    heading da cláusula (##/### e o corpo #### que vier junto) é
+    repetido em CADA sub-chunk resultante — sem isso, um fragmento como
+    "Nos termos do art. 6º..." ficaria sem nenhuma pista de que pertence
+    à cláusula "2.1 DA ISENÇÃO DO IMPOSTO DE RENDA", o que prejudica a
+    extração. Isso é diferente do overlap entre chunks vizinhos (que foi
+    removido): é a cláusula repetindo o PRÓPRIO título em pedaços dela
+    mesma, não texto de um chunk vazando para o chunk seguinte.
+    """
+    sections = _split_by_clause_headings(md)
+    sections = _merge_short_sections(sections, MIN_SECTION_CHARS)
+
     chunks = []
-    for sec in sections:
-        sec = sec.strip()
-        if not sec:
+    for section in sections:
+        if len(section) <= max_clause_chars:
+            chunks.append(section)
             continue
-        if len(sec) <= chunk_size:
-            chunks.append(sec)
+
+        logger.info(
+            "[Chunking] Cláusula com %d chars (> %d) — subdividindo por parágrafo.",
+            len(section), max_clause_chars,
+        )
+        heading, body = _split_heading_and_body(section)
+        budget = max(max_clause_chars - len(heading) - 2, 200)  # reserva espaço pro heading repetido
+
+        if not body:
+            chunks.append(heading)
+            continue
+
+        sub_chunks = _split_by_paragraph(body, budget)
+        if heading:
+            sub_chunks = [f"{heading}\n\n{sc}" for sc in sub_chunks]
+        chunks.extend(sub_chunks)
+
+    return [c.strip() for c in chunks if c.strip()]
+
+
+def _split_heading_and_body(section: str) -> "tuple[str, str]":
+    """
+    Separa as linhas de heading (##, ### ou ####) do início da seção do
+    restante do corpo. Usado para poder repetir o heading em cada
+    sub-chunk quando a cláusula precisa ser dividida em pedaços.
+    """
+    lines = section.split('\n')
+    heading_lines: List[str] = []
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped:
+            i += 1
+            continue
+        if stripped.startswith('#'):
+            heading_lines.append(lines[i])
+            i += 1
         else:
-            start = 0
-            while start < len(sec):
-                end = min(start + chunk_size, len(sec))
-                chunk = sec[start:end].strip()
-                if chunk:
-                    chunks.append(chunk)
-                start += chunk_size - overlap
+            break
+    heading = '\n'.join(heading_lines).strip()
+    body = '\n'.join(lines[i:]).strip()
+    return heading, body
+
+
+def _split_by_clause_headings(md: str) -> List[str]:
+    """
+    Divide o markdown em segmentos, cada um começando num heading de
+    nível ## ou ### (cláusula/seção) e contendo todo o texto até o
+    próximo heading ##/###. Headings #### (numeração como "3.1") e texto
+    comum permanecem dentro do segmento — só ##/### quebram.
+
+    Texto antes do primeiro heading (ex.: cabeçalho "AO JUÍZO...") forma
+    o primeiro segmento (preâmbulo da petição/contrato).
+    """
+    lines = md.split('\n')
+    sections: List[str] = []
+    current: List[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        m = _HEADING_RE.match(stripped)
+        is_clause_boundary = bool(m) and len(m.group(1)) in (2, 3)
+
+        if is_clause_boundary and current:
+            sections.append('\n'.join(current).strip())
+            current = [line]
+        else:
+            current.append(line)
+
+    if current:
+        sections.append('\n'.join(current).strip())
+
+    return [s for s in sections if s.strip()]
+
+
+def _merge_short_sections(sections: List[str], min_chars: int) -> List[str]:
+    """
+    Anexa seções muito curtas (ex.: um heading "## SEÇÃO 3" sem corpo
+    próprio, ou um título solto) à seção SEGUINTE, para não gerar chunks
+    inúteis de 1 linha. Se a última seção do documento sobrar pequena,
+    é anexada à anterior em vez de descartada.
+    """
+    merged: List[str] = []
+    carry = ""
+
+    for sec in sections:
+        combined = f"{carry}\n\n{sec}".strip() if carry else sec
+        if len(combined) < min_chars:
+            carry = combined
+        else:
+            merged.append(combined)
+            carry = ""
+
+    if carry:
+        if merged:
+            merged[-1] = f"{merged[-1]}\n\n{carry}".strip()
+        else:
+            merged.append(carry)
+
+    return merged
+
+
+def _split_by_paragraph(section: str, max_chars: int) -> List[str]:
+    """
+    Subdivide uma cláusula grande demais em pedaços por parágrafo
+    (separados por linha em branco), nunca cortando um parágrafo no
+    meio — exceto quando um parágrafo isolado também ultrapassa
+    max_chars, caso em que ele cai para _split_by_sentence().
+    """
+    paragraphs = [p.strip() for p in section.split('\n\n') if p.strip()]
+    chunks: List[str] = []
+    current: List[str] = []
+    current_len = 0
+
+    for para in paragraphs:
+        para_len = len(para)
+
+        if para_len > max_chars:
+            if current:
+                chunks.append('\n\n'.join(current))
+                current, current_len = [], 0
+            logger.info(
+                "[Chunking] Parágrafo com %d chars (> %d) — subdividindo por frase.",
+                para_len, max_chars,
+            )
+            chunks.extend(_split_by_sentence(para, max_chars))
+            continue
+
+        if current and current_len + para_len + 2 > max_chars:
+            chunks.append('\n\n'.join(current))
+            current, current_len = [], 0
+
+        current.append(para)
+        current_len += para_len + 2
+
+    if current:
+        chunks.append('\n\n'.join(current))
+
+    return chunks
+
+
+def _split_by_sentence(paragraph: str, max_chars: int) -> List[str]:
+    """
+    Último recurso: corta um parágrafo monstruosamente longo por frase,
+    agrupando frases consecutivas até chegar perto de max_chars.
+    """
+    sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+    chunks: List[str] = []
+    current: List[str] = []
+    current_len = 0
+
+    for sent in sentences:
+        sent_len = len(sent)
+        if current and current_len + sent_len + 1 > max_chars:
+            chunks.append(' '.join(current))
+            current, current_len = [], 0
+        current.append(sent)
+        current_len += sent_len + 1
+
+    if current:
+        chunks.append(' '.join(current))
+
     return chunks
 
 
