@@ -230,12 +230,12 @@ class CustomExtractor:
         logger.info("[DEBUG] CONTEXTO (primeiros 500 chars): %s...", context[:500])
         logger.info("[DEBUG] CONTEXTO (últimos 200 chars): ...%s", context[-200:])
 
-        # Timeout adaptativo: baseado no tamanho do prompt (30s a 600s)
-        # - 30s mínimo para instruções simples
+        # Timeout adaptativo: baseado no tamanho do prompt (90s a 600s)
+        # - 90s mínimo para Ollama processar (modelo 7B é lento)
         # - ~1s por 1000 caracteres de contexto
         # - Máximo de 600s para casos extremos
         estimated_tokens = len(prompt)
-        adaptive_timeout = min(max(estimated_tokens / 50, 30), 600)
+        adaptive_timeout = min(max(estimated_tokens / 50, 90), 600)
 
         response = requests.post(
             self._ollama_url,
